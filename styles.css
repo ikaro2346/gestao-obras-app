@@ -817,6 +817,26 @@ dialog::backdrop {
   padding: 0;
 }
 
+.settings-backup-actions {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+
+.settings-backup-actions summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.settings-backup-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .trash-list {
   display: grid;
   gap: 10px;

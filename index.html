@@ -23,9 +23,6 @@
         <button id="installApp" class="ghost-button" type="button" hidden>Instalar</button>
         <button id="openSettings" class="ghost-button" type="button">Configurar</button>
         <button id="printReport" class="icon-button" type="button" aria-label="Gerar relatório em PDF">PDF</button>
-        <button id="importJson" class="ghost-button" type="button">Importar</button>
-        <input id="importJsonInput" type="file" accept=".json" hidden>
-        <button id="exportJson" class="primary-button" type="button">Exportar</button>
       </div>
     </header>
 
@@ -470,7 +467,15 @@
           </select>
         </label>
         <button id="restoreSafetyBackup" class="ghost-button full" type="button" hidden>Restaurar backup anterior</button>
-        <button id="exportPortfolio" class="ghost-button full" type="button">Backup de todas as obras</button>
+        <details class="settings-backup-actions">
+          <summary>Backup e importação</summary>
+          <div class="settings-backup-grid">
+            <button id="exportJson" class="ghost-button full" type="button">Exportar obra atual</button>
+            <button id="exportPortfolio" class="ghost-button full" type="button">Backup de todas as obras</button>
+            <button id="importJson" class="delete-button full" type="button">Importar JSON</button>
+            <input id="importJsonInput" type="file" accept=".json" hidden>
+          </div>
+        </details>
         <menu>
           <button class="ghost-button" value="cancel" type="button" id="cancelSettings">Cancelar</button>
           <button class="primary-button" value="default" type="submit">Salvar configurações</button>
