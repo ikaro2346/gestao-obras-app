@@ -299,12 +299,7 @@ button {
 }
 
 .form-panel {
-  position: sticky;
-  top: 12px;
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  position: static;
 }
 
 label {
@@ -921,13 +916,6 @@ dialog::backdrop {
   .today-summary,
   .report-summary {
     grid-template-columns: 1fr 1fr;
-  }
-
-  .form-panel {
-    position: static;
-    max-height: none;
-    overflow: visible;
-    overscroll-behavior: auto;
   }
 
   .split-layout,
