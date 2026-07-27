@@ -301,6 +301,10 @@ button {
 .form-panel {
   position: sticky;
   top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 label {
@@ -901,6 +905,9 @@ dialog::backdrop {
 
   .form-panel {
     position: static;
+    max-height: none;
+    overflow: visible;
+    overscroll-behavior: auto;
   }
 
   .split-layout,
