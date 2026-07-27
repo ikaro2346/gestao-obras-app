@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#1d4d4f">
     <title>Gestão de Obras</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=10">
+    <link rel="stylesheet" href="./styles.css?v=11">
   </head>
   <body>
     <header class="app-header">
@@ -16,7 +16,7 @@
         <p id="projectMeta" class="muted"></p>
       </div>
       <div class="header-actions">
-        <button id="printReport" class="icon-button" type="button" aria-label="Imprimir relatório">Imprimir</button>
+        <button id="printReport" class="icon-button" type="button" aria-label="Gerar relatório em PDF">PDF</button>
         <button id="importJson" class="ghost-button" type="button">Importar</button>
         <input id="importJsonInput" type="file" accept=".json" hidden>
         <button id="exportJson" class="primary-button" type="button">Exportar</button>
@@ -295,7 +295,10 @@
               <p class="eyebrow">Relatório gerencial</p>
               <h2 id="relatorioTitle">Acompanhamento da obra</h2>
             </div>
-            <button id="exportCsv" class="ghost-button" type="button">Exportar CSV</button>
+            <div class="report-actions">
+              <button id="openPdfReport" class="primary-button" type="button">Gerar PDF</button>
+              <button id="exportCsv" class="ghost-button" type="button">Exportar CSV</button>
+            </div>
           </div>
           <div id="reportSummary" class="report-summary"></div>
           <div class="table-wrap">
@@ -361,6 +364,44 @@
         </section>
       </section>
     </main>
+
+    <dialog id="pdfReportDialog">
+      <form method="dialog" id="pdfReportForm" class="dialog-form">
+        <h2>Gerar relatório em PDF</h2>
+        <label>
+          Modelo do relatório
+          <select id="pdfReportType">
+            <option value="phases">Gastos por etapa</option>
+            <option value="summary">Resumo geral da obra</option>
+            <option value="transactions">Lançamentos detalhados</option>
+          </select>
+        </label>
+        <div class="form-row">
+          <label>
+            Unidade
+            <select id="pdfUnit"></select>
+          </label>
+          <label>
+            Etapa
+            <select id="pdfPhase"></select>
+          </label>
+        </div>
+        <div class="form-row">
+          <label>
+            Data inicial
+            <input id="pdfStartDate" type="date">
+          </label>
+          <label>
+            Data final
+            <input id="pdfEndDate" type="date">
+          </label>
+        </div>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelPdfReport">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Gerar PDF</button>
+        </menu>
+      </form>
+    </dialog>
 
     <dialog id="phaseDialog">
       <form method="dialog" id="phaseForm" class="dialog-form">
@@ -446,6 +487,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=10"></script>
+    <script src="./app.js?v=11"></script>
   </body>
 </html>

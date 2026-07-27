@@ -290,17 +290,104 @@ function phaseSchedule(phase) {
   return { start, end, duration };
 }
 
+function reportTransactions(filters) {
+  return state.transactions.filter((item) => {
+    const matchesUnit = filters.unit === "Todas" || item.unit === filters.unit;
+    const matchesPhase = filters.phaseId === null || item.phaseId === filters.phaseId;
+    const matchesStart = !filters.start || String(item.date || "") >= filters.start;
+    const matchesEnd = !filters.end || String(item.date || "") <= filters.end;
+    return matchesUnit && matchesPhase && matchesStart && matchesEnd;
+  });
+}
+
+function reportPhaseRows(items, selectedPhaseId = null) {
+  const phases = selectedPhaseId === null
+    ? state.phases
+    : state.phases.filter((phase) => phase.id === selectedPhaseId);
+  const rows = phases.map((phase) => {
+    const phaseItems = items.filter((item) => item.phaseId === phase.id);
+    const spent = phaseItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const material = phaseItems
+      .filter((item) => item.type === "Material")
+      .reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const budget = Number(phase.budget || 0);
+    return {
+      id: phase.id,
+      name: phase.name,
+      budget,
+      spent,
+      material,
+      other: spent - material,
+      balance: budget - spent,
+      percentUsed: budget > 0 ? spent / budget : null,
+      count: phaseItems.length,
+      items: phaseItems
+    };
+  });
+
+  if (selectedPhaseId === null) {
+    const knownIds = new Set(state.phases.map((phase) => phase.id));
+    const orphanItems = items.filter((item) => !knownIds.has(item.phaseId));
+    if (orphanItems.length) {
+      const spent = orphanItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+      const material = orphanItems
+        .filter((item) => item.type === "Material")
+        .reduce((sum, item) => sum + Number(item.total || 0), 0);
+      rows.push({
+        id: null,
+        name: "Sem vínculo",
+        budget: 0,
+        spent,
+        material,
+        other: spent - material,
+        balance: 0,
+        percentUsed: null,
+        count: orphanItems.length,
+        items: orphanItems
+      });
+    }
+  }
+
+  return rows;
+}
+
+function reportTotals(items, phaseRows) {
+  const spent = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const material = items
+    .filter((item) => item.type === "Material")
+    .reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const budget = phaseRows.reduce((sum, phase) => sum + Number(phase.budget || 0), 0);
+  return {
+    budget,
+    spent,
+    material,
+    other: spent - material,
+    balance: budget - spent,
+    count: items.length
+  };
+}
+
 function renderSelects() {
+  const selectedPdfUnit = byId("pdfUnit")?.value || "Todas";
+  const selectedPdfPhase = byId("pdfPhase")?.value || "Todas";
   const unitOptions = state.units
     .map((unit) => `<option value="${escapeHtml(unit.name)}">${escapeHtml(unit.name)}</option>`)
     .join("");
   byId("unitFilter").innerHTML = '<option value="Todas">Todas as unidades</option>' + unitOptions;
   byId("formUnit").innerHTML = unitOptions;
+  byId("pdfUnit").innerHTML = '<option value="Todas">Todas as unidades</option>' + unitOptions;
+  byId("pdfUnit").value = Array.from(byId("pdfUnit").options).some((option) => option.value === selectedPdfUnit)
+    ? selectedPdfUnit
+    : "Todas";
 
   const phaseOptions = ['<option value="Todas">Todas as etapas</option>']
     .concat(state.phases.map((phase) => `<option value="${phase.id}">${escapeHtml(phase.name)}</option>`))
     .join("");
   byId("phaseFilter").innerHTML = phaseOptions;
+  byId("pdfPhase").innerHTML = phaseOptions;
+  byId("pdfPhase").value = Array.from(byId("pdfPhase").options).some((option) => option.value === selectedPdfPhase)
+    ? selectedPdfPhase
+    : "Todas";
   byId("formPhase").innerHTML = state.phases
     .map((phase) => `<option value="${phase.id}">${escapeHtml(phase.name)}</option>`)
     .join("");
@@ -676,6 +763,381 @@ function exportCsv() {
   download("lancamentos-casa-germinada.csv", csv, "text/csv;charset=utf-8");
 }
 
+function pdfReportFilters() {
+  const phaseValue = byId("pdfPhase").value;
+  return {
+    type: byId("pdfReportType").value,
+    unit: byId("pdfUnit").value,
+    phaseId: phaseValue === "Todas" ? null : Number(phaseValue),
+    start: byId("pdfStartDate").value,
+    end: byId("pdfEndDate").value
+  };
+}
+
+function pdfReportTitle(type) {
+  return {
+    phases: "Gastos por etapa",
+    summary: "Resumo geral da obra",
+    transactions: "Lançamentos detalhados"
+  }[type] || "Relatório da obra";
+}
+
+function pdfFilterLabels(filters) {
+  const phase = filters.phaseId === null ? "Todas as etapas" : phaseName(filters.phaseId);
+  let period = "Todo o período";
+  if (filters.start && filters.end) {
+    period = `${formatDate(filters.start)} a ${formatDate(filters.end)}`;
+  } else if (filters.start) {
+    period = `A partir de ${formatDate(filters.start)}`;
+  } else if (filters.end) {
+    period = `Até ${formatDate(filters.end)}`;
+  }
+  return [
+    filters.unit === "Todas" ? "Todas as unidades" : filters.unit,
+    phase,
+    period
+  ];
+}
+
+function pdfSummaryHtml(totals) {
+  const balance = totals.budget > 0 ? money.format(totals.balance) : "-";
+  return `
+    <section class="summary-grid">
+      <article><span>Gasto realizado</span><strong>${money.format(totals.spent)}</strong></article>
+      <article><span>Orçamento das etapas</span><strong>${money.format(totals.budget)}</strong></article>
+      <article><span>Saldo</span><strong>${balance}</strong></article>
+      <article><span>Materiais</span><strong>${money.format(totals.material)}</strong></article>
+      <article><span>Outros custos</span><strong>${money.format(totals.other)}</strong></article>
+      <article><span>Lançamentos</span><strong>${totals.count.toLocaleString("pt-BR")}</strong></article>
+    </section>
+  `;
+}
+
+function pdfPhaseSummaryHtml(rows) {
+  const body = rows.map((phase) => {
+    const used = phase.percentUsed === null ? "-" : `${percentFmt.format(phase.percentUsed * 100)}%`;
+    return `
+      <tr>
+        <td><strong>${escapeHtml(phase.name)}</strong></td>
+        <td class="num">${phase.count}</td>
+        <td class="num">${money.format(phase.budget)}</td>
+        <td class="num">${money.format(phase.material)}</td>
+        <td class="num">${money.format(phase.other)}</td>
+        <td class="num">${money.format(phase.spent)}</td>
+        <td class="num">${phase.budget > 0 ? money.format(phase.balance) : "-"}</td>
+        <td class="num">${used}</td>
+      </tr>
+    `;
+  }).join("");
+
+  return `
+    <section class="report-section">
+      <h2>Resumo por etapa</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Etapa</th>
+            <th class="num">Itens</th>
+            <th class="num">Orçado</th>
+            <th class="num">Materiais</th>
+            <th class="num">Outros</th>
+            <th class="num">Gasto</th>
+            <th class="num">Saldo</th>
+            <th class="num">% usado</th>
+          </tr>
+        </thead>
+        <tbody>${body || '<tr><td colspan="8">Nenhuma etapa encontrada.</td></tr>'}</tbody>
+      </table>
+    </section>
+  `;
+}
+
+function pdfTransactionsTableHtml(items, options = {}) {
+  const showPhase = options.showPhase !== false;
+  const ordered = [...items].sort((a, b) => {
+    const dateCompare = String(a.date || "").localeCompare(String(b.date || ""));
+    return dateCompare || Number(a.id || 0) - Number(b.id || 0);
+  });
+  const rows = ordered.map((item) => {
+    const supplier = item.supplier ? `<small>Fornecedor: ${escapeHtml(item.supplier)}</small>` : "";
+    const notes = item.notes ? `<small>Obs.: ${escapeHtml(item.notes)}</small>` : "";
+    const documentRef = item.document ? `<small>Documento: ${escapeHtml(item.document)}</small>` : "";
+    return `
+      <tr>
+        <td>${formatDate(item.date)}</td>
+        ${showPhase ? `<td>${escapeHtml(phaseName(item.phaseId))}</td>` : ""}
+        <td>${escapeHtml(item.unit || "Sem vínculo")}</td>
+        <td><strong>${escapeHtml(item.description)}</strong>${supplier}${documentRef}${notes}</td>
+        <td>${escapeHtml(item.type)}</td>
+        <td class="num">${Number(item.quantity || 0).toLocaleString("pt-BR")}</td>
+        <td class="num">${money.format(Number(item.unitValue || 0))}</td>
+        <td class="num"><strong>${money.format(Number(item.total || 0))}</strong></td>
+      </tr>
+    `;
+  }).join("");
+  const columns = showPhase ? 8 : 7;
+
+  return `
+    <table class="detail-table">
+      <thead>
+        <tr>
+          <th>Data</th>
+          ${showPhase ? "<th>Etapa</th>" : ""}
+          <th>Unidade</th>
+          <th>Descrição</th>
+          <th>Tipo</th>
+          <th class="num">Qtd.</th>
+          <th class="num">Unitário</th>
+          <th class="num">Total</th>
+        </tr>
+      </thead>
+      <tbody>${rows || `<tr><td colspan="${columns}">Nenhum lançamento encontrado para os filtros escolhidos.</td></tr>`}</tbody>
+    </table>
+  `;
+}
+
+function pdfSummarySectionsHtml(items, phaseRows) {
+  const typeMap = totalsBy(items, (item) => item.type || "Sem tipo");
+  const typeTotal = Object.values(typeMap).reduce((sum, value) => sum + value, 0);
+  const typeRows = Object.entries(typeMap)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, total]) => `
+      <tr>
+        <td>${escapeHtml(type)}</td>
+        <td class="num">${money.format(total)}</td>
+        <td class="num">${typeTotal > 0 ? `${percentFmt.format((total / typeTotal) * 100)}%` : "-"}</td>
+      </tr>
+    `).join("");
+  const topRows = rankedItems(items).slice(0, 10).map((item, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(item.description)}</td>
+      <td>${escapeHtml(item.mainPhase)}</td>
+      <td class="num">${money.format(item.total)}</td>
+    </tr>
+  `).join("");
+
+  return `
+    ${pdfPhaseSummaryHtml(phaseRows)}
+    <section class="two-column report-section">
+      <div>
+        <h2>Composição dos gastos</h2>
+        <table>
+          <thead><tr><th>Tipo</th><th class="num">Total</th><th class="num">Participação</th></tr></thead>
+          <tbody>${typeRows || '<tr><td colspan="3">Sem dados.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <div>
+        <h2>10 itens de maior custo</h2>
+        <table>
+          <thead><tr><th>#</th><th>Item</th><th>Etapa</th><th class="num">Total</th></tr></thead>
+          <tbody>${topRows || '<tr><td colspan="4">Sem dados.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function pdfPhaseDetailsHtml(phaseRows) {
+  const sections = phaseRows
+    .filter((phase) => phase.items.length)
+    .map((phase) => `
+      <section class="phase-detail">
+        <div class="section-heading">
+          <div>
+            <span>Etapa</span>
+            <h2>${escapeHtml(phase.name)}</h2>
+          </div>
+          <div class="phase-total">
+            <span>Total da etapa no filtro</span>
+            <strong>${money.format(phase.spent)}</strong>
+          </div>
+        </div>
+        ${pdfTransactionsTableHtml(phase.items, { showPhase: false })}
+      </section>
+    `).join("");
+  return sections || '<p class="empty">Nenhum lançamento encontrado para os filtros escolhidos.</p>';
+}
+
+function buildPdfReportHtml(filters) {
+  const items = reportTransactions(filters);
+  const phaseRows = reportPhaseRows(items, filters.phaseId);
+  const totals = reportTotals(items, phaseRows);
+  const title = pdfReportTitle(filters.type);
+  const labels = pdfFilterLabels(filters);
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  const projectName = state.project?.name || "Gestão de Obras";
+  const projectAddress = [state.project?.address, state.project?.city].filter(Boolean).join(" - ");
+  const documentLabel = state.project?.document ? `CNPJ/CPF: ${escapeHtml(state.project.document)}` : "";
+  const orientation = filters.type === "transactions" ? "landscape" : "portrait";
+  let content = pdfSummarySectionsHtml(items, phaseRows);
+
+  if (filters.type === "phases") {
+    content = `${pdfPhaseSummaryHtml(phaseRows)}${pdfPhaseDetailsHtml(phaseRows)}`;
+  } else if (filters.type === "transactions") {
+    content = `
+      <section class="report-section">
+        <h2>Relação de lançamentos</h2>
+        ${pdfTransactionsTableHtml(items)}
+      </section>
+    `;
+  }
+
+  return `
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>${escapeHtml(title)} - ${escapeHtml(projectName)} - ${todayIso()}</title>
+        <style>
+          @page { size: A4 ${orientation}; margin: 12mm; }
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            color: #172321;
+            background: #fff;
+            font: 10.5px/1.4 Arial, Helvetica, sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          header {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            padding-bottom: 12px;
+            border-bottom: 3px solid #1d6b59;
+          }
+          h1, h2, p { margin: 0; }
+          h1 { margin-top: 3px; font-size: 21px; }
+          h2 { margin-bottom: 8px; font-size: 14px; }
+          .brand { color: #1d6b59; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+          .project-meta { margin-top: 5px; color: #53615e; }
+          .emission { min-width: 150px; text-align: right; }
+          .emission strong, .emission span { display: block; }
+          .emission span { color: #66736f; }
+          .filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin: 12px 0;
+          }
+          .filters span {
+            padding: 4px 8px;
+            border: 1px solid #ccd7d3;
+            border-radius: 4px;
+            background: #f3f7f5;
+          }
+          .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 7px;
+            margin-bottom: 14px;
+          }
+          .summary-grid article {
+            padding: 8px 10px;
+            border: 1px solid #ccd7d3;
+            border-radius: 4px;
+          }
+          .summary-grid span { display: block; color: #66736f; }
+          .summary-grid strong { display: block; margin-top: 2px; font-size: 14px; }
+          .report-section { margin-top: 15px; }
+          .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+          table { width: 100%; border-collapse: collapse; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; }
+          th, td {
+            padding: 5px 6px;
+            border: 1px solid #d6dedb;
+            text-align: left;
+            vertical-align: top;
+          }
+          th { color: #fff; background: #285b50; font-size: 9px; }
+          tbody tr:nth-child(even) { background: #f6f8f7; }
+          .num { text-align: right; white-space: nowrap; }
+          small { display: block; margin-top: 2px; color: #65716e; }
+          .phase-detail { break-before: page; }
+          .section-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 9px;
+            padding-bottom: 7px;
+            border-bottom: 2px solid #1d6b59;
+          }
+          .section-heading span, .phase-total span { display: block; color: #66736f; }
+          .section-heading h2 { margin: 1px 0 0; font-size: 18px; }
+          .phase-total { text-align: right; }
+          .phase-total strong { font-size: 15px; }
+          .empty { margin-top: 24px; padding: 14px; border: 1px solid #ccd7d3; }
+          footer {
+            margin-top: 14px;
+            padding-top: 7px;
+            border-top: 1px solid #ccd7d3;
+            color: #66736f;
+            text-align: center;
+          }
+          @media screen {
+            body { max-width: 1100px; margin: 20px auto; padding: 20px; box-shadow: 0 8px 30px rgba(0,0,0,.12); }
+          }
+          @media screen and (max-width: 700px) {
+            body { margin: 0; padding: 12px; box-shadow: none; }
+            header { align-items: flex-start; flex-direction: column; }
+            .emission { text-align: left; }
+            .summary-grid, .two-column { grid-template-columns: 1fr; }
+            .report-section { overflow-x: auto; }
+          }
+        </style>
+      </head>
+      <body>
+        <header>
+          <div>
+            <span class="brand">Gestão de Obras</span>
+            <h1>${escapeHtml(title)}</h1>
+            <p class="project-meta"><strong>${escapeHtml(projectName)}</strong>${projectAddress ? ` | ${escapeHtml(projectAddress)}` : ""}${documentLabel ? ` | ${documentLabel}` : ""}</p>
+          </div>
+          <div class="emission">
+            <span>Emitido em</span>
+            <strong>${escapeHtml(generatedAt)}</strong>
+          </div>
+        </header>
+        <div class="filters">
+          ${labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
+        </div>
+        ${pdfSummaryHtml(totals)}
+        ${content}
+        <footer>Relatório gerado pelo aplicativo Gestão de Obras</footer>
+      </body>
+    </html>
+  `;
+}
+
+function generatePdfReport() {
+  const filters = pdfReportFilters();
+  if (filters.start && filters.end && filters.start > filters.end) {
+    alert("A data inicial não pode ser posterior à data final.");
+    return;
+  }
+
+  const reportWindow = window.open("", "_blank", "width=1200,height=800");
+  if (!reportWindow) {
+    alert("O navegador bloqueou a abertura do relatório. Permita pop-ups para este site e tente novamente.");
+    return;
+  }
+
+  byId("pdfReportDialog").close();
+  reportWindow.addEventListener("load", () => {
+    setTimeout(() => {
+      reportWindow.focus();
+      reportWindow.print();
+    }, 250);
+  }, { once: true });
+  reportWindow.document.open();
+  reportWindow.document.write(buildPdfReportHtml(filters));
+  reportWindow.document.close();
+}
+
 function validateImportState(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) {
     throw new Error("O arquivo precisa ser um objeto JSON exportado pelo app.");
@@ -856,6 +1318,10 @@ function openDescriptionDialog() {
   byId("descriptionName").value = byId("formDescription").value || "";
   byId("descriptionDefaultValue").value = byId("formValue").value || "";
   byId("descriptionDialog").showModal();
+}
+
+function openPdfReportDialog() {
+  byId("pdfReportDialog").showModal();
 }
 
 function wireEvents() {
@@ -1106,7 +1572,13 @@ function wireEvents() {
     importJsonFile(event.target.files?.[0]);
   });
   byId("exportCsv").addEventListener("click", exportCsv);
-  byId("printReport").addEventListener("click", () => window.print());
+  byId("printReport").addEventListener("click", openPdfReportDialog);
+  byId("openPdfReport").addEventListener("click", openPdfReportDialog);
+  byId("cancelPdfReport").addEventListener("click", () => byId("pdfReportDialog").close());
+  byId("pdfReportForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    generatePdfReport();
+  });
 }
 
 byId("formDate").value = todayIso();

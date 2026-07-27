@@ -697,6 +697,11 @@ th {
   font-size: 20px;
 }
 
+.report-actions {
+  display: flex;
+  gap: 10px;
+}
+
 dialog {
   width: min(480px, calc(100% - 24px));
   border: 0;
@@ -707,6 +712,10 @@ dialog {
 
 dialog::backdrop {
   background: rgba(14, 24, 23, .42);
+}
+
+#pdfReportDialog {
+  width: min(680px, calc(100% - 24px));
 }
 
 .dialog-form {
@@ -773,7 +782,8 @@ dialog::backdrop {
   .field-with-action,
   .ranking-item,
   .abc-item,
-  .panel-title {
+  .panel-title,
+  .report-actions {
     align-items: stretch;
     flex-direction: column;
   }
