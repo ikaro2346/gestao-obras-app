@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- feat: simplifica o lançamento diário e adiciona rascunho, favoritos e alerta de duplicidade.
+- feat: adiciona situação financeira, vencimentos, filtros avançados e contas a pagar.
+- feat: adiciona lixeira recuperável, backup automático, restauração antes de importações e rateio por área.
+- feat: adiciona configurações da obra e instalação PWA com suporte offline.
+- feat: adiciona múltiplas obras locais, backup completo e avanço físico das etapas.
+- docs: prepara esquema e regras de acesso para colaboração com Supabase.
 - feat: adiciona relatorios em PDF com resumo, gastos por etapa e lancamentos detalhados.
 - fix: faz o modo obra acompanhar a data atual pela data local do computador.
 - feat: adiciona edicao de lancamentos e importacao de backup em JSON.

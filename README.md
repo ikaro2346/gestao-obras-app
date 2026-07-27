@@ -11,7 +11,17 @@ Aplicativo web para controle financeiro e operacional de obras residenciais, cri
 - Relatório de acompanhamento por fase.
 - Ranking dos itens mais caros.
 - Curva ABC de materiais.
+- Situação financeira: pago, a pagar, previsto e cancelado.
+- Vencimentos e alerta de contas vencidas.
+- Múltiplas obras no mesmo navegador, com backup completo.
+- Situação e avanço físico das etapas.
+- Lixeira com restauração e rascunho automático.
+- Rateio igual ou proporcional pela área.
+- Relatórios em PDF com filtros.
 - Exportação JSON e CSV.
+- Backup automático diário no navegador.
+- Cópia de segurança restaurável antes de cada importação.
+- Instalação como PWA e abertura offline pelo endereço publicado.
 - Layout responsivo para celular e computador.
 
 ## Como Abrir
@@ -32,6 +42,24 @@ Este projeto ainda não usa build, servidor ou framework. Por enquanto basta edi
 - `manifest.webmanifest`: configuração básica de app instalável.
 
 Depois de alterar, atualize o navegador com `Ctrl + F5`.
+
+## Testes
+
+Execute o teste de migração, cálculos, lixeira, rateio e relatórios:
+
+```bash
+node tests/smoke.test.js
+```
+
+## Colaboração Online
+
+A estrutura de banco e as regras de acesso estão preparadas em:
+
+- `docs/supabase-schema.sql`
+- `docs/supabase-setup.md`
+
+A ativação depende de um projeto Supabase real e deve começar por um backup JSON
+dos dados atuais.
 
 ## Fluxo Com GitHub
 

@@ -1,4 +1,9 @@
 const STORAGE_KEY = "gestao-obras-casa-germinada-v3";
+const BACKUP_KEY = "gestao-obras-backups-v1";
+const DRAFT_KEY = "gestao-obras-lancamento-rascunho-v1";
+const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
+const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
+const SCHEMA_VERSION = 4;
 
 const seedData = {
   project: {
@@ -83,25 +88,209 @@ const seedData = {
 };
 
 let state = loadState();
+let portfolio = loadPortfolio(state);
+state = migrateState(activeProjectRecord()?.data || state);
 let selectNewPhaseAfterSave = false;
 let editingTransactionId = null;
+let lastDeletedTransactionId = null;
+let undoTimer = null;
+let deferredInstallPrompt = null;
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" });
 const percentFmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
 
+saveAutomaticBackup();
+
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return structuredClone(seedData);
+  if (!saved) return migrateState(structuredClone(seedData));
   try {
-    return JSON.parse(saved);
+    return migrateState(JSON.parse(saved));
   } catch {
-    return structuredClone(seedData);
+    try {
+      const backups = JSON.parse(localStorage.getItem(BACKUP_KEY) || "[]");
+      if (backups[0]?.data) return migrateState(backups[0].data);
+    } catch {
+      // O dado inicial continua sendo o último recurso seguro.
+    }
+    return migrateState(structuredClone(seedData));
   }
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  state = migrateState(state);
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (portfolio) {
+      portfolio.projects = portfolio.projects.map((entry) => entry.id === portfolio.activeProjectId
+        ? { ...entry, name: state.project.name, data: structuredClone(state), updatedAt: new Date().toISOString() }
+        : entry
+      );
+      localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(portfolio));
+    }
+    saveAutomaticBackup();
+  } catch {
+    alert("Não foi possível salvar os dados neste navegador. Exporte um backup JSON antes de continuar.");
+  }
+}
+
+function createLocalId(prefix) {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function loadPortfolio(initialState) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PORTFOLIO_KEY) || "null");
+    if (saved?.activeProjectId && Array.isArray(saved.projects) && saved.projects.length) {
+      return {
+        activeProjectId: saved.activeProjectId,
+        projects: saved.projects.map((entry) => ({
+          ...entry,
+          data: migrateState(entry.data)
+        }))
+      };
+    }
+  } catch {
+    // A obra atual será usada para reconstruir o portfólio local.
+  }
+  const id = createLocalId("obra");
+  return {
+    activeProjectId: id,
+    projects: [{
+      id,
+      name: initialState.project?.name || "Obra principal",
+      data: migrateState(initialState),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }]
+  };
+}
+
+function activeProjectRecord() {
+  return portfolio?.projects.find((entry) => entry.id === portfolio.activeProjectId);
+}
+
+function blankProjectState(project) {
+  return migrateState({
+    project: {
+      name: project.name,
+      document: project.document || "",
+      phone: "",
+      email: "",
+      address: project.address || "",
+      city: project.city || "",
+      allocationMethod: "equal"
+    },
+    units: [{ id: 1, name: "Geral", area: 0, status: "Custo comum" }],
+    phases: [{ id: 1, name: "Planejamento", budget: 0, start: "", end: "", status: "Planejada" }],
+    catalog: [],
+    transactions: [],
+    trash: []
+  });
+}
+
+function migrateState(data) {
+  const next = structuredClone(data || seedData);
+  next.schemaVersion = SCHEMA_VERSION;
+  next.project = {
+    ...seedData.project,
+    ...(next.project || {}),
+    allocationMethod: next.project?.allocationMethod || "equal"
+  };
+  next.units = Array.isArray(next.units) ? next.units.map((unit, index) => ({
+    id: Number(unit.id || index + 1),
+    name: String(unit.name || "Sem vínculo"),
+    area: Number(unit.area || 0),
+    status: String(unit.status || "Planejada")
+  })) : [];
+  next.phases = Array.isArray(next.phases) ? next.phases.map((phase, index) => ({
+    id: Number(phase.id || index + 1),
+    name: String(phase.name || "Etapa sem nome"),
+    budget: Number(phase.budget || 0),
+    start: String(phase.start || ""),
+    end: String(phase.end || ""),
+    status: String(phase.status || "Em execução"),
+    progress: Math.min(100, Math.max(0, Number(phase.progress || 0)))
+  })) : [];
+  next.catalog = Array.isArray(next.catalog) ? next.catalog.map((item) => ({
+    type: String(item.type || "Material"),
+    description: String(item.description || ""),
+    defaultValue: Number(item.defaultValue || 0),
+    measure: String(item.measure || "un"),
+    favorite: Boolean(item.favorite)
+  })).filter((item) => item.description) : [];
+  next.transactions = Array.isArray(next.transactions) ? next.transactions.map((item, index) => {
+    const quantity = Number(item.quantity || 0);
+    const unitValue = Number(item.unitValue || 0);
+    return {
+      ...item,
+      id: Number(item.id || index + 1),
+      phaseId: item.phaseId === null ? null : Number(item.phaseId || 0),
+      unit: String(item.unit || ""),
+      type: String(item.type || "Material"),
+      description: String(item.description || ""),
+      supplier: String(item.supplier || ""),
+      quantity,
+      measure: String(item.measure || "un"),
+      unitValue,
+      total: Number(item.total ?? (quantity * unitValue).toFixed(2)),
+      date: String(item.date || todayIso()),
+      financialStatus: String(item.financialStatus || "Pago"),
+      dueDate: String(item.dueDate || ""),
+      payment: String(item.payment || ""),
+      document: String(item.document || ""),
+      notes: String(item.notes || "")
+    };
+  }) : [];
+  next.trash = Array.isArray(next.trash) ? next.trash : [];
+  return next;
+}
+
+function saveAutomaticBackup() {
+  try {
+    const today = todayIso();
+    const projectId = portfolio?.activeProjectId || "obra-legada";
+    let backups = [];
+    try {
+      backups = JSON.parse(localStorage.getItem(BACKUP_KEY) || "[]");
+    } catch {
+      backups = [];
+    }
+    if (backups.some((backup) => backup.date === today && backup.projectId === projectId)) return;
+    backups.unshift({
+      date: today,
+      projectId,
+      createdAt: new Date().toISOString(),
+      data: structuredClone(state)
+    });
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(backups.slice(0, 14)));
+  } catch {
+    // A falha do backup não deve impedir o uso do aplicativo.
+  }
+}
+
+function savePortfolioSafetyBackup(reason) {
+  try {
+    localStorage.setItem(SAFETY_BACKUP_KEY, JSON.stringify({
+      createdAt: new Date().toISOString(),
+      reason,
+      portfolio: structuredClone(portfolio)
+    }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadPortfolioSafetyBackup() {
+  try {
+    const backup = JSON.parse(localStorage.getItem(SAFETY_BACKUP_KEY) || "null");
+    return backup?.portfolio?.projects?.length ? backup : null;
+  } catch {
+    return null;
+  }
 }
 
 function byId(id) {
@@ -122,8 +311,30 @@ function phaseName(id) {
   return state.phases.find((phase) => phase.id === Number(id))?.name || "Sem vínculo";
 }
 
+function financialStatus(item) {
+  const status = String(item.financialStatus || "Pago");
+  return ["Pago", "A pagar", "Previsto", "Cancelado"].includes(status) ? status : "Previsto";
+}
+
+function financialStatusClass(status) {
+  return {
+    "Pago": "status-paid",
+    "A pagar": "status-pending",
+    "Previsto": "status-planned",
+    "Cancelado": "status-cancelled"
+  }[status] || "status-planned";
+}
+
+function paidTransactions(items = state.transactions) {
+  return items.filter((item) => financialStatus(item) === "Pago");
+}
+
+function pendingTransactions(items = state.transactions) {
+  return items.filter((item) => financialStatus(item) === "A pagar");
+}
+
 function phaseTotal(id, transactions = state.transactions) {
-  return transactions
+  return paidTransactions(transactions)
     .filter((item) => item.phaseId === Number(id))
     .reduce((sum, item) => sum + Number(item.total || 0), 0);
 }
@@ -146,8 +357,8 @@ function refreshWorkModeDate() {
   }
 }
 
-function latestTransaction() {
-  return [...state.transactions].sort((a, b) => {
+function latestTransaction(items = state.transactions) {
+  return [...items].sort((a, b) => {
     const dateCompare = String(b.date || "").localeCompare(String(a.date || ""));
     return dateCompare || Number(b.id || 0) - Number(a.id || 0);
   })[0];
@@ -157,7 +368,9 @@ function catalogItems() {
   const fromTransactions = state.transactions.map((item) => ({
     type: item.type,
     description: item.description,
-    defaultValue: item.unitValue || 0
+    defaultValue: item.unitValue || 0,
+    measure: item.measure || "un",
+    favorite: false
   }));
   const byName = [...(state.catalog || []), ...fromTransactions].reduce((acc, item) => {
     if (!item.description) return acc;
@@ -166,12 +379,19 @@ function catalogItems() {
       acc[key] = {
         type: item.type || "Material",
         description: item.description.trim(),
-        defaultValue: Number(item.defaultValue || 0)
+        defaultValue: Number(item.defaultValue || 0),
+        measure: item.measure || "un",
+        favorite: Boolean(item.favorite)
       };
+    } else if (item.favorite) {
+      acc[key].favorite = true;
     }
     return acc;
   }, {});
-  return Object.values(byName).sort((a, b) => a.description.localeCompare(b.description, "pt-BR"));
+  return Object.values(byName).sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) ||
+    a.description.localeCompare(b.description, "pt-BR")
+  );
 }
 
 function findCatalogItem(description) {
@@ -184,7 +404,7 @@ function billableUnits() {
 }
 
 function unitDirectTotal(unitName) {
-  return state.transactions
+  return paidTransactions(state.transactions)
     .filter((item) => item.unit === unitName)
     .reduce((sum, item) => sum + Number(item.total || 0), 0);
 }
@@ -195,7 +415,16 @@ function sharedTotal() {
 
 function unitAllocatedTotal(unitName) {
   if (unitName === "Geral") return sharedTotal();
-  const split = billableUnits().length || 1;
+  const units = billableUnits();
+  const method = state.project.allocationMethod || "equal";
+  if (method === "area") {
+    const totalArea = units.reduce((sum, unit) => sum + Number(unit.area || 0), 0);
+    if (totalArea > 0) {
+      const unitArea = Number(units.find((unit) => unit.name === unitName)?.area || 0);
+      return unitDirectTotal(unitName) + (sharedTotal() * (unitArea / totalArea));
+    }
+  }
+  const split = units.length || 1;
   return unitDirectTotal(unitName) + (sharedTotal() / split);
 }
 
@@ -204,13 +433,26 @@ function filteredTransactions() {
   const phase = byId("phaseFilter")?.value || "Todas";
   const type = byId("typeFilter")?.value || "Todos";
   const unit = byId("unitFilter")?.value || "Todas";
+  const status = byId("statusFilter")?.value || "Todos";
+  const supplier = byId("supplierFilter")?.value.trim().toLowerCase() || "";
+  const start = byId("startDateFilter")?.value || "";
+  const end = byId("endDateFilter")?.value || "";
 
   return state.transactions.filter((item) => {
-    const matchesSearch = !search || String(item.description || "").toLowerCase().includes(search);
+    const searchable = [item.description, item.supplier, item.document, item.notes]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    const matchesSearch = !search || searchable.includes(search);
     const matchesPhase = phase === "Todas" || item.phaseId === Number(phase);
     const matchesType = type === "Todos" || item.type === type;
     const matchesUnit = unit === "Todas" || item.unit === unit;
-    return matchesSearch && matchesPhase && matchesType && matchesUnit;
+    const matchesStatus = status === "Todos" || financialStatus(item) === status;
+    const matchesSupplier = !supplier || String(item.supplier || "").toLowerCase().includes(supplier);
+    const matchesStart = !start || String(item.date || "") >= start;
+    const matchesEnd = !end || String(item.date || "") <= end;
+    return matchesSearch && matchesPhase && matchesType && matchesUnit &&
+      matchesStatus && matchesSupplier && matchesStart && matchesEnd;
   });
 }
 
@@ -286,7 +528,9 @@ function phaseSchedule(phase) {
     .sort();
   const start = phase.start || dates[0] || "";
   const end = phase.end || dates[dates.length - 1] || "";
-  const duration = start && end ? Math.max(0, Math.round((new Date(`${end}T00:00:00Z`) - new Date(`${start}T00:00:00Z`)) / 86400000)) : null;
+  const duration = start && end
+    ? Math.max(1, Math.round((new Date(`${end}T00:00:00Z`) - new Date(`${start}T00:00:00Z`)) / 86400000) + 1)
+    : null;
   return { start, end, duration };
 }
 
@@ -301,11 +545,12 @@ function reportTransactions(filters) {
 }
 
 function reportPhaseRows(items, selectedPhaseId = null) {
+  const realizedItems = paidTransactions(items);
   const phases = selectedPhaseId === null
     ? state.phases
     : state.phases.filter((phase) => phase.id === selectedPhaseId);
   const rows = phases.map((phase) => {
-    const phaseItems = items.filter((item) => item.phaseId === phase.id);
+    const phaseItems = realizedItems.filter((item) => item.phaseId === phase.id);
     const spent = phaseItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
     const material = phaseItems
       .filter((item) => item.type === "Material")
@@ -327,7 +572,7 @@ function reportPhaseRows(items, selectedPhaseId = null) {
 
   if (selectedPhaseId === null) {
     const knownIds = new Set(state.phases.map((phase) => phase.id));
-    const orphanItems = items.filter((item) => !knownIds.has(item.phaseId));
+    const orphanItems = realizedItems.filter((item) => !knownIds.has(item.phaseId));
     if (orphanItems.length) {
       const spent = orphanItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
       const material = orphanItems
@@ -352,8 +597,9 @@ function reportPhaseRows(items, selectedPhaseId = null) {
 }
 
 function reportTotals(items, phaseRows) {
-  const spent = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const material = items
+  const realizedItems = paidTransactions(items);
+  const spent = realizedItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const material = realizedItems
     .filter((item) => item.type === "Material")
     .reduce((sum, item) => sum + Number(item.total || 0), 0);
   const budget = phaseRows.reduce((sum, phase) => sum + Number(phase.budget || 0), 0);
@@ -363,17 +609,23 @@ function reportTotals(items, phaseRows) {
     material,
     other: spent - material,
     balance: budget - spent,
-    count: items.length
+    count: realizedItems.length
   };
 }
 
 function renderSelects() {
+  const selectedUnitFilter = byId("unitFilter")?.value || "Todas";
+  const selectedPhaseFilter = byId("phaseFilter")?.value || "Todas";
+  const selectedTypeFilter = byId("typeFilter")?.value || "Todos";
   const selectedPdfUnit = byId("pdfUnit")?.value || "Todas";
   const selectedPdfPhase = byId("pdfPhase")?.value || "Todas";
   const unitOptions = state.units
     .map((unit) => `<option value="${escapeHtml(unit.name)}">${escapeHtml(unit.name)}</option>`)
     .join("");
   byId("unitFilter").innerHTML = '<option value="Todas">Todas as unidades</option>' + unitOptions;
+  byId("unitFilter").value = Array.from(byId("unitFilter").options).some((option) => option.value === selectedUnitFilter)
+    ? selectedUnitFilter
+    : "Todas";
   byId("formUnit").innerHTML = unitOptions;
   byId("pdfUnit").innerHTML = '<option value="Todas">Todas as unidades</option>' + unitOptions;
   byId("pdfUnit").value = Array.from(byId("pdfUnit").options).some((option) => option.value === selectedPdfUnit)
@@ -384,6 +636,9 @@ function renderSelects() {
     .concat(state.phases.map((phase) => `<option value="${phase.id}">${escapeHtml(phase.name)}</option>`))
     .join("");
   byId("phaseFilter").innerHTML = phaseOptions;
+  byId("phaseFilter").value = Array.from(byId("phaseFilter").options).some((option) => option.value === selectedPhaseFilter)
+    ? selectedPhaseFilter
+    : "Todas";
   byId("pdfPhase").innerHTML = phaseOptions;
   byId("pdfPhase").value = Array.from(byId("pdfPhase").options).some((option) => option.value === selectedPdfPhase)
     ? selectedPdfPhase
@@ -396,13 +651,16 @@ function renderSelects() {
   const types = Array.from(new Set([...defaultTypes, ...state.transactions.map((item) => item.type).filter(Boolean)])).sort();
   byId("typeFilter").innerHTML = '<option value="Todos">Todos os tipos</option>' +
     types.map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`).join("");
+  byId("typeFilter").value = Array.from(byId("typeFilter").options).some((option) => option.value === selectedTypeFilter)
+    ? selectedTypeFilter
+    : "Todos";
   byId("formType").innerHTML = types
     .map((type) => `<option value="${escapeHtml(type)}">${escapeHtml(type)}</option>`)
     .join("");
 
   const catalog = catalogItems();
   byId("catalogList").innerHTML = catalog
-    .map((item) => `<option value="${escapeHtml(item.description)}" label="${escapeHtml(item.type)}${item.defaultValue ? ` - ${money.format(item.defaultValue)}` : ""}"></option>`)
+    .map((item) => `<option value="${escapeHtml(item.description)}" label="${item.favorite ? "Favorito - " : ""}${escapeHtml(item.type)} | ${escapeHtml(item.measure)}${item.defaultValue ? ` - ${money.format(item.defaultValue)}` : ""}"></option>`)
     .join("");
 
   const suppliers = Array.from(new Set(state.transactions.map((item) => item.supplier).filter(Boolean))).sort();
@@ -411,26 +669,45 @@ function renderSelects() {
 
 function renderDashboard() {
   const items = filteredTransactions();
+  const realizedItems = paidTransactions(items);
+  const pendingItems = pendingTransactions(items);
   const today = todayIso();
-  const todayItems = state.transactions.filter((item) => item.date === today);
+  const todayItems = paidTransactions(state.transactions).filter((item) => item.date === today);
   const todayTotal = todayItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const last = latestTransaction();
-  const totalReal = items.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const totalPlanned = state.phases.reduce((sum, phase) => sum + Number(phase.budget || 0), 0);
-  const [topPhaseLabel, topPhaseAmount] = topEntry(totalsBy(items, (item) => phaseName(item.phaseId)));
-  const [topTypeLabel, topTypeAmount] = topEntry(totalsBy(items, (item) => item.type));
+  const last = latestTransaction(paidTransactions(state.transactions));
+  const totalReal = realizedItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const pendingTotal = pendingItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const overdueCount = pendingItems.filter((item) => item.dueDate && item.dueDate < today).length;
+  const selectedPhase = byId("phaseFilter")?.value || "Todas";
+  const budgetPhases = selectedPhase === "Todas"
+    ? state.phases
+    : state.phases.filter((phase) => phase.id === Number(selectedPhase));
+  const totalPlanned = budgetPhases.reduce((sum, phase) => sum + Number(phase.budget || 0), 0);
+  const hasPartialBudgetContext = (byId("unitFilter")?.value || "Todas") !== "Todas" ||
+    Boolean(byId("startDateFilter")?.value) ||
+    Boolean(byId("endDateFilter")?.value) ||
+    !["Todos", "Pago"].includes(byId("statusFilter")?.value || "Todos");
+  const [topPhaseLabel, topPhaseAmount] = topEntry(totalsBy(realizedItems, (item) => phaseName(item.phaseId)));
+  const [topTypeLabel, topTypeAmount] = topEntry(totalsBy(realizedItems, (item) => item.type));
 
-  byId("projectMeta").textContent = `${state.project.address} | ${state.project.city}`;
+  byId("projectTitle").textContent = state.project.name || "Gestão de Obras";
+  byId("projectMeta").textContent = [state.project.address, state.project.city].filter(Boolean).join(" | ");
   byId("totalReal").textContent = money.format(totalReal);
-  byId("launchCount").textContent = `${items.length} lançamentos filtrados`;
+  byId("launchCount").textContent = `${realizedItems.length} pagos | ${items.length} registros`;
   byId("totalPlanned").textContent = money.format(totalPlanned);
-  byId("budgetStatus").textContent = totalPlanned > 0
+  byId("budgetStatus").textContent = hasPartialBudgetContext
+    ? "Orçamento integral das etapas; filtros afetam o realizado"
+    : totalPlanned > 0
     ? `${Math.round((totalReal / totalPlanned) * 100)}% do orçamento usado`
     : "Informe o orçamento nas etapas";
   byId("topPhase").textContent = topPhaseLabel;
   byId("topPhaseValue").textContent = money.format(topPhaseAmount);
   byId("topType").textContent = topTypeLabel;
   byId("topTypeValue").textContent = money.format(topTypeAmount);
+  byId("pendingTotal").textContent = money.format(pendingTotal);
+  byId("pendingCount").textContent = overdueCount
+    ? `${pendingItems.length} pendência(s), ${overdueCount} vencida(s)`
+    : `${pendingItems.length} pendência(s) filtrada(s)`;
   byId("todayLabel").textContent = formatDate(today);
   byId("todaySummary").innerHTML = `
     <article class="today-item"><span>Gasto hoje</span><strong>${money.format(todayTotal)}</strong></article>
@@ -438,9 +715,9 @@ function renderDashboard() {
     <article class="today-item"><span>Último gasto</span><strong>${last ? money.format(last.total) : "-"}</strong></article>
   `;
 
-  const max = Math.max(...state.phases.map((phase) => phaseTotal(phase.id, items)), 1);
+  const max = Math.max(...state.phases.map((phase) => phaseTotal(phase.id, realizedItems)), 1);
   byId("phaseBars").innerHTML = state.phases.map((phase) => {
-    const real = phaseTotal(phase.id, items);
+    const real = phaseTotal(phase.id, realizedItems);
     const width = Math.max(2, Math.round((real / max) * 100));
     const budget = Number(phase.budget || 0);
     const budgetText = budget > 0 ? ` / ${money.format(budget)}` : "";
@@ -465,6 +742,8 @@ function renderDashboard() {
     const type = escapeHtml(item.type);
     const supplier = item.supplier ? ` | ${escapeHtml(item.supplier)}` : "";
     const unit = escapeHtml(item.unit || "Sem vínculo");
+    const status = financialStatus(item);
+    const statusLabel = escapeHtml(status);
     return `
       <article class="activity-item">
         <div class="activity-top">
@@ -473,12 +752,13 @@ function renderDashboard() {
         </div>
         <div class="muted">${formatDate(item.date)} | ${phase} | ${type}${supplier}</div>
         <span class="badge">${unit}</span>
+        <span class="badge ${financialStatusClass(status)}">${statusLabel}</span>
       </article>
     `;
   }).join("") || '<p class="muted">Nenhum lançamento encontrado.</p>';
 
   const rankingLimit = Number(byId("rankingLimit")?.value || 5);
-  const ranking = rankedItems(items).slice(0, rankingLimit);
+  const ranking = rankedItems(realizedItems).slice(0, rankingLimit);
   const rankingMax = Math.max(...ranking.map((item) => item.total), 1);
   byId("costRanking").innerHTML = ranking.map((item, index) => {
     const width = Math.max(2, Math.round((item.total / rankingMax) * 100));
@@ -512,13 +792,14 @@ function renderDashboard() {
         <div class="timeline-dates">
           <div><span>Início</span><strong>${formatDate(schedule.start)}</strong></div>
           <div><span>Fim</span><strong>${formatDate(schedule.end)}</strong></div>
-          <div><span>Realizado</span><strong>${money.format(phaseTotal(phase.id, items))}</strong></div>
+          <div><span>Realizado</span><strong>${money.format(phaseTotal(phase.id, realizedItems))}</strong></div>
+          <div><span>Avanço físico</span><strong>${Number(phase.progress || 0).toLocaleString("pt-BR")}%</strong></div>
         </div>
       </article>
     `;
   }).join("");
 
-  const abcItems = materialAbcItems(items);
+  const abcItems = materialAbcItems(realizedItems);
   const abcMax = Math.max(...abcItems.map((item) => item.total), 1);
   byId("abcSummary").innerHTML = abcSummary(abcItems).map((group) => `
     <article class="abc-chip">
@@ -559,15 +840,20 @@ function renderTransactions() {
     const documentRef = item.document ? ` | doc. ${escapeHtml(item.document)}` : "";
     const supplier = escapeHtml(item.supplier || "-");
     const notes = item.notes ? `<br><span class="muted">${escapeHtml(item.notes)}</span>` : "";
+    const status = financialStatus(item);
+    const statusLabel = escapeHtml(status);
+    const measure = escapeHtml(item.measure || "un");
+    const dueDate = item.dueDate ? `<br><span class="muted">Vence em ${formatDate(item.dueDate)}</span>` : "";
     return `
       <tr>
         <td>${formatDate(item.date)}</td>
-        <td>${phase}<br><span class="muted">${unit}</span></td>
-        <td><strong>${description}</strong><br><span class="muted">${item.quantity} x ${money.format(item.unitValue)} | ${type}${payment}${documentRef}</span></td>
-        <td>${supplier}${notes}</td>
+        <td>${phase}<br><span class="muted">${unit}</span><br><span class="badge ${financialStatusClass(status)}">${statusLabel}</span></td>
+        <td><strong>${description}</strong><br><span class="muted">${item.quantity} ${measure} x ${money.format(item.unitValue)} | ${type}${payment}${documentRef}</span></td>
+        <td>${supplier}${dueDate}${notes}</td>
         <td class="number">${money.format(item.total)}</td>
         <td class="number">
           <div class="row-actions">
+            ${status === "A pagar" ? `<button class="table-action" type="button" data-mark-paid="${item.id}">Marcar pago</button>` : ""}
             <button class="table-action" type="button" data-edit="${item.id}" aria-label="Editar ${description}">Editar</button>
             <button class="delete-button" type="button" data-delete="${item.id}" aria-label="Excluir ${description}">Excluir</button>
           </div>
@@ -588,6 +874,7 @@ function renderPhases() {
     return `
       <article class="phase-card">
         <h3>${name}</h3>
+        <span class="badge">${escapeHtml(phase.status || "Em execução")}</span>
         <dl>
           <div><dt>Orçado</dt><dd>${money.format(budget)}</dd></div>
           <div><dt>Realizado</dt><dd>${money.format(real)}</dd></div>
@@ -596,6 +883,7 @@ function renderPhases() {
           <div><dt>Início</dt><dd>${formatDate(schedule.start)}</dd></div>
           <div><dt>Fim</dt><dd>${formatDate(schedule.end)}</dd></div>
           <div><dt>Duração</dt><dd>${schedule.duration === null ? "-" : `${schedule.duration} dias`}</dd></div>
+          <div><dt>Avanço físico</dt><dd>${Number(phase.progress || 0).toLocaleString("pt-BR")}%</dd></div>
         </dl>
         <div class="phase-actions">
           <button class="ghost-button" type="button" data-edit-phase="${phase.id}">Editar</button>
@@ -607,8 +895,7 @@ function renderPhases() {
 }
 
 function renderUnits() {
-  const split = billableUnits().length || 1;
-  const totalReal = state.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const totalReal = paidTransactions(state.transactions).reduce((sum, item) => sum + Number(item.total || 0), 0);
   byId("unitCards").innerHTML = state.units.map((unit) => {
     const direct = unitDirectTotal(unit.name);
     const allocated = unitAllocatedTotal(unit.name);
@@ -619,7 +906,7 @@ function renderUnits() {
       : totalReal > 0 ? `${Math.round((allocated / totalReal) * 100)}%` : "-";
     const sharedLabel = unit.name === "Geral"
       ? `${billableUnits().length} unidades no rateio`
-      : `${money.format(sharedTotal() / split)} de custo comum`;
+      : `${money.format(allocated - direct)} de custo comum (${state.project.allocationMethod === "area" ? "por área" : "igual"})`;
     const name = escapeHtml(unit.name || "Sem vínculo");
     const status = escapeHtml(unit.status || "-");
 
@@ -645,9 +932,10 @@ function renderUnits() {
 }
 
 function renderReport() {
-  const totalReal = state.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const realizedItems = paidTransactions(state.transactions);
+  const totalReal = realizedItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
   const totalBudget = state.phases.reduce((sum, phase) => sum + Number(phase.budget || 0), 0);
-  const material = state.transactions
+  const material = realizedItems
     .filter((item) => item.type === "Material")
     .reduce((sum, item) => sum + Number(item.total || 0), 0);
 
@@ -678,7 +966,7 @@ function renderReport() {
     `;
   }).join("");
 
-  byId("rankingRows").innerHTML = rankedItems(state.transactions).slice(0, 15).map((item, index) => {
+  byId("rankingRows").innerHTML = rankedItems(realizedItems).slice(0, 15).map((item, index) => {
     const description = escapeHtml(item.description);
     const type = escapeHtml(item.type);
     const mainPhase = escapeHtml(item.mainPhase);
@@ -694,7 +982,7 @@ function renderReport() {
     `;
   }).join("");
 
-  byId("abcRows").innerHTML = materialAbcItems(state.transactions).map((item) => {
+  byId("abcRows").innerHTML = materialAbcItems(realizedItems).map((item) => {
     const description = escapeHtml(item.description);
     const mainPhase = escapeHtml(item.mainPhase);
     return `
@@ -711,7 +999,15 @@ function renderReport() {
   }).join("");
 }
 
+function renderProjectSelector() {
+  byId("projectSelector").innerHTML = portfolio.projects
+    .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.name || entry.data?.project?.name || "Obra")}</option>`)
+    .join("");
+  byId("projectSelector").value = portfolio.activeProjectId;
+}
+
 function renderAll() {
+  renderProjectSelector();
   renderSelects();
   renderDashboard();
   renderTransactions();
@@ -722,7 +1018,8 @@ function renderAll() {
 
 function formatDate(value) {
   if (!value) return "-";
-  return dateFmt.format(new Date(`${value}T00:00:00Z`));
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? "-" : dateFmt.format(date);
 }
 
 function nextId(collection) {
@@ -742,7 +1039,7 @@ function download(filename, content, type) {
 }
 
 function exportCsv() {
-  const headers = ["data", "unidade", "etapa", "tipo", "descricao", "fornecedor", "quantidade", "valor_unitario", "total", "pagamento", "documento", "observacoes"];
+  const headers = ["data", "unidade", "etapa", "tipo", "descricao", "fornecedor", "quantidade", "unidade_medida", "valor_unitario", "total", "situacao", "vencimento", "pagamento", "documento", "observacoes"];
   const rows = state.transactions.map((item) => [
     item.date,
     item.unit,
@@ -751,8 +1048,11 @@ function exportCsv() {
     item.description,
     item.supplier || "",
     item.quantity,
+    item.measure || "un",
     item.unitValue,
     item.total,
+    financialStatus(item),
+    item.dueDate || "",
     item.payment || "",
     item.document || "",
     item.notes
@@ -799,8 +1099,8 @@ function pdfFilterLabels(filters) {
   ];
 }
 
-function pdfSummaryHtml(totals) {
-  const balance = totals.budget > 0 ? money.format(totals.balance) : "-";
+function pdfSummaryHtml(totals, budgetComparable = true) {
+  const balance = budgetComparable && totals.budget > 0 ? money.format(totals.balance) : "-";
   return `
     <section class="summary-grid">
       <article><span>Gasto realizado</span><strong>${money.format(totals.spent)}</strong></article>
@@ -813,9 +1113,9 @@ function pdfSummaryHtml(totals) {
   `;
 }
 
-function pdfPhaseSummaryHtml(rows) {
+function pdfPhaseSummaryHtml(rows, budgetComparable = true) {
   const body = rows.map((phase) => {
-    const used = phase.percentUsed === null ? "-" : `${percentFmt.format(phase.percentUsed * 100)}%`;
+    const used = budgetComparable && phase.percentUsed !== null ? `${percentFmt.format(phase.percentUsed * 100)}%` : "-";
     return `
       <tr>
         <td><strong>${escapeHtml(phase.name)}</strong></td>
@@ -824,7 +1124,7 @@ function pdfPhaseSummaryHtml(rows) {
         <td class="num">${money.format(phase.material)}</td>
         <td class="num">${money.format(phase.other)}</td>
         <td class="num">${money.format(phase.spent)}</td>
-        <td class="num">${phase.budget > 0 ? money.format(phase.balance) : "-"}</td>
+        <td class="num">${budgetComparable && phase.budget > 0 ? money.format(phase.balance) : "-"}</td>
         <td class="num">${used}</td>
       </tr>
     `;
@@ -862,6 +1162,7 @@ function pdfTransactionsTableHtml(items, options = {}) {
     const supplier = item.supplier ? `<small>Fornecedor: ${escapeHtml(item.supplier)}</small>` : "";
     const notes = item.notes ? `<small>Obs.: ${escapeHtml(item.notes)}</small>` : "";
     const documentRef = item.document ? `<small>Documento: ${escapeHtml(item.document)}</small>` : "";
+    const status = financialStatus(item);
     return `
       <tr>
         <td>${formatDate(item.date)}</td>
@@ -869,13 +1170,14 @@ function pdfTransactionsTableHtml(items, options = {}) {
         <td>${escapeHtml(item.unit || "Sem vínculo")}</td>
         <td><strong>${escapeHtml(item.description)}</strong>${supplier}${documentRef}${notes}</td>
         <td>${escapeHtml(item.type)}</td>
-        <td class="num">${Number(item.quantity || 0).toLocaleString("pt-BR")}</td>
+        <td>${escapeHtml(status)}</td>
+        <td class="num">${Number(item.quantity || 0).toLocaleString("pt-BR")} ${escapeHtml(item.measure || "un")}</td>
         <td class="num">${money.format(Number(item.unitValue || 0))}</td>
         <td class="num"><strong>${money.format(Number(item.total || 0))}</strong></td>
       </tr>
     `;
   }).join("");
-  const columns = showPhase ? 8 : 7;
+  const columns = showPhase ? 9 : 8;
 
   return `
     <table class="detail-table">
@@ -886,6 +1188,7 @@ function pdfTransactionsTableHtml(items, options = {}) {
           <th>Unidade</th>
           <th>Descrição</th>
           <th>Tipo</th>
+          <th>Situação</th>
           <th class="num">Qtd.</th>
           <th class="num">Unitário</th>
           <th class="num">Total</th>
@@ -896,8 +1199,9 @@ function pdfTransactionsTableHtml(items, options = {}) {
   `;
 }
 
-function pdfSummarySectionsHtml(items, phaseRows) {
-  const typeMap = totalsBy(items, (item) => item.type || "Sem tipo");
+function pdfSummarySectionsHtml(items, phaseRows, budgetComparable = true) {
+  const realizedItems = paidTransactions(items);
+  const typeMap = totalsBy(realizedItems, (item) => item.type || "Sem tipo");
   const typeTotal = Object.values(typeMap).reduce((sum, value) => sum + value, 0);
   const typeRows = Object.entries(typeMap)
     .sort((a, b) => b[1] - a[1])
@@ -908,7 +1212,7 @@ function pdfSummarySectionsHtml(items, phaseRows) {
         <td class="num">${typeTotal > 0 ? `${percentFmt.format((total / typeTotal) * 100)}%` : "-"}</td>
       </tr>
     `).join("");
-  const topRows = rankedItems(items).slice(0, 10).map((item, index) => `
+  const topRows = rankedItems(realizedItems).slice(0, 10).map((item, index) => `
     <tr>
       <td>${index + 1}</td>
       <td>${escapeHtml(item.description)}</td>
@@ -918,7 +1222,7 @@ function pdfSummarySectionsHtml(items, phaseRows) {
   `).join("");
 
   return `
-    ${pdfPhaseSummaryHtml(phaseRows)}
+    ${pdfPhaseSummaryHtml(phaseRows, budgetComparable)}
     <section class="two-column report-section">
       <div>
         <h2>Composição dos gastos</h2>
@@ -970,10 +1274,11 @@ function buildPdfReportHtml(filters) {
   const projectAddress = [state.project?.address, state.project?.city].filter(Boolean).join(" - ");
   const documentLabel = state.project?.document ? `CNPJ/CPF: ${escapeHtml(state.project.document)}` : "";
   const orientation = filters.type === "transactions" ? "landscape" : "portrait";
-  let content = pdfSummarySectionsHtml(items, phaseRows);
+  const budgetComparable = filters.unit === "Todas" && !filters.start && !filters.end;
+  let content = pdfSummarySectionsHtml(items, phaseRows, budgetComparable);
 
   if (filters.type === "phases") {
-    content = `${pdfPhaseSummaryHtml(phaseRows)}${pdfPhaseDetailsHtml(phaseRows)}`;
+    content = `${pdfPhaseSummaryHtml(phaseRows, budgetComparable)}${pdfPhaseDetailsHtml(phaseRows)}`;
   } else if (filters.type === "transactions") {
     content = `
       <section class="report-section">
@@ -1105,7 +1410,7 @@ function buildPdfReportHtml(filters) {
         <div class="filters">
           ${labels.map((label) => `<span>${escapeHtml(label)}</span>`).join("")}
         </div>
-        ${pdfSummaryHtml(totals)}
+        ${pdfSummaryHtml(totals, budgetComparable)}
         ${content}
         <footer>Relatório gerado pelo aplicativo Gestão de Obras</footer>
       </body>
@@ -1152,9 +1457,11 @@ function validateImportState(data) {
   });
 
   return {
+    schemaVersion: SCHEMA_VERSION,
     project: {
       ...seedData.project,
-      ...data.project
+      ...data.project,
+      allocationMethod: data.project.allocationMethod || "equal"
     },
     units: data.units.map((unit, index) => ({
       id: Number(unit.id || index + 1),
@@ -1167,13 +1474,17 @@ function validateImportState(data) {
       name: String(phase.name || "Etapa sem nome"),
       budget: Number(phase.budget || 0),
       start: phase.start || "",
-      end: phase.end || ""
+      end: phase.end || "",
+      status: String(phase.status || "Em execução"),
+      progress: Math.min(100, Math.max(0, Number(phase.progress || 0)))
     })),
     catalog: Array.isArray(data.catalog)
       ? data.catalog.map((item) => ({
         type: String(item.type || "Material"),
         description: String(item.description || ""),
-        defaultValue: Number(item.defaultValue || 0)
+        defaultValue: Number(item.defaultValue || 0),
+        measure: String(item.measure || "un"),
+        favorite: Boolean(item.favorite)
       })).filter((item) => item.description)
       : [],
     transactions: data.transactions.map((item, index) => {
@@ -1181,21 +1492,46 @@ function validateImportState(data) {
       const unitValue = Number(item.unitValue || 0);
       return {
         id: Number(item.id || index + 1),
-        phaseId: Number(item.phaseId || 0),
+        phaseId: item.phaseId === null ? null : Number(item.phaseId || 0),
         unit: String(item.unit || ""),
         type: String(item.type || "Material"),
         description: String(item.description || ""),
         supplier: String(item.supplier || ""),
         quantity,
+        measure: String(item.measure || "un"),
         unitValue,
         total: Number(item.total ?? (quantity * unitValue).toFixed(2)),
         date: String(item.date || todayIso()),
+        financialStatus: String(item.financialStatus || "Pago"),
+        dueDate: String(item.dueDate || ""),
         payment: String(item.payment || ""),
         document: String(item.document || ""),
         notes: String(item.notes || "")
       };
-    })
+    }),
+    trash: Array.isArray(data.trash) ? data.trash : []
   };
+}
+
+function validatePortfolioImport(data) {
+  if (data?.portfolioVersion !== 1 || !Array.isArray(data.projects) || !data.projects.length) {
+    return null;
+  }
+  const projects = data.projects.map((entry, index) => {
+    if (!entry?.data) throw new Error(`A obra ${index + 1} do backup completo não contém dados.`);
+    const validated = validateImportState(entry.data);
+    return {
+      id: String(entry.id || createLocalId("obra")),
+      name: String(entry.name || validated.project.name || `Obra ${index + 1}`),
+      data: validated,
+      createdAt: entry.createdAt || new Date().toISOString(),
+      updatedAt: entry.updatedAt || new Date().toISOString()
+    };
+  });
+  const activeProjectId = projects.some((entry) => entry.id === data.activeProjectId)
+    ? data.activeProjectId
+    : projects[0].id;
+  return { activeProjectId, projects };
 }
 
 function importJsonFile(file) {
@@ -1203,10 +1539,25 @@ function importJsonFile(file) {
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
-      const imported = validateImportState(JSON.parse(reader.result));
-      const confirmed = confirm("Importar este JSON vai sobrescrever todos os dados atuais do app. Deseja continuar?");
+      const parsed = JSON.parse(reader.result);
+      const importedPortfolio = validatePortfolioImport(parsed);
+      const imported = importedPortfolio ? null : validateImportState(parsed);
+      const message = importedPortfolio
+        ? "Este backup vai substituir todas as obras salvas neste navegador. Deseja continuar?"
+        : "Importar este JSON vai sobrescrever os dados da obra atual. Deseja continuar?";
+      const confirmed = confirm(message);
       if (!confirmed) return;
-      state = imported;
+      const backupCreated = savePortfolioSafetyBackup("Antes da importação");
+      if (!backupCreated) {
+        const continueWithoutBackup = confirm("Não foi possível criar a cópia de segurança automática. Deseja continuar a importação mesmo assim?");
+        if (!continueWithoutBackup) return;
+      }
+      if (importedPortfolio) {
+        portfolio = importedPortfolio;
+        state = migrateState(activeProjectRecord().data);
+      } else {
+        state = imported;
+      }
       saveState();
       resetTransactionForm();
       renderAll();
@@ -1228,6 +1579,8 @@ function openPhaseDialog(phase) {
   byId("phaseId").value = phase?.id || "";
   byId("phaseName").value = phase?.name || "";
   byId("phaseBudget").value = phase?.budget || "";
+  byId("phaseStatus").value = phase?.status || "Em execução";
+  byId("phaseProgress").value = Number(phase?.progress || 0);
   byId("phaseStart").value = phase?.start || "";
   byId("phaseEnd").value = phase?.end || "";
   byId("phaseDialog").showModal();
@@ -1249,17 +1602,29 @@ function fillTransactionForm(item, options = {}) {
   byId("formDescription").value = item.description || "";
   byId("formSupplier").value = item.supplier || "";
   byId("formQuantity").value = item.quantity || 1;
+  byId("formMeasure").value = item.measure || "un";
   byId("formValue").value = item.unitValue || "";
+  byId("formFinancialStatus").value = financialStatus(item);
+  byId("formDueDate").value = item.dueDate || "";
   byId("formPayment").value = item.payment || "";
   byId("formDocument").value = options.keepDocument ? item.document || "" : "";
   byId("formDate").value = options.keepDate ? item.date || todayIso() : todayIso();
   byId("formNotes").value = item.notes || "";
+  byId("transactionDetails").open = Boolean(
+    item.supplier || item.payment || item.document || item.notes || item.dueDate ||
+    financialStatus(item) !== "Pago"
+  );
+  updateTransactionTotalPreview();
+  updateFavoriteButton();
 }
 
 function transactionFromForm(id) {
   const quantity = Number(byId("formQuantity").value || 0);
   const unitValue = Number(byId("formValue").value || 0);
+  const previous = state.transactions.find((item) => item.id === Number(id));
+  const timestamp = new Date().toISOString();
   return {
+    ...(previous || {}),
     id,
     phaseId: Number(byId("formPhase").value),
     unit: byId("formUnit").value,
@@ -1267,30 +1632,99 @@ function transactionFromForm(id) {
     description: byId("formDescription").value.trim(),
     supplier: byId("formSupplier").value.trim(),
     quantity,
+    measure: byId("formMeasure").value,
     unitValue,
     total: Number((quantity * unitValue).toFixed(2)),
     date: byId("formDate").value,
+    financialStatus: byId("formFinancialStatus").value,
+    dueDate: byId("formDueDate").value,
     payment: byId("formPayment").value,
     document: byId("formDocument").value.trim(),
-    notes: byId("formNotes").value.trim()
+    notes: byId("formNotes").value.trim(),
+    createdAt: previous?.createdAt || timestamp,
+    updatedAt: timestamp
   };
 }
 
 function rememberCatalogItem(item) {
   if (!item.description) return;
+  const previous = findCatalogItem(item.description);
   state.catalog = [
     ...(state.catalog || []).filter((entry) => String(entry.description || "").trim().toLowerCase() !== item.description.toLowerCase()),
-    { type: item.type, description: item.description, defaultValue: item.unitValue }
+    {
+      type: item.type,
+      description: item.description,
+      defaultValue: item.unitValue,
+      measure: item.measure || "un",
+      favorite: Boolean(previous?.favorite)
+    }
   ];
 }
 
 function resetTransactionForm(form = byId("transactionForm")) {
   editingTransactionId = null;
   form.reset();
+  localStorage.removeItem(DRAFT_KEY);
   byId("formQuantity").value = 1;
+  byId("formMeasure").value = "un";
+  byId("formFinancialStatus").value = "Pago";
   byId("formDate").value = todayIso();
+  byId("transactionDetails").open = false;
   byId("transactionSubmit").textContent = "Adicionar lançamento";
   byId("cancelTransactionEdit").hidden = true;
+  updateTransactionTotalPreview();
+  updateFavoriteButton();
+}
+
+function saveTransactionDraft() {
+  if (editingTransactionId) return;
+  const draft = {
+    phaseId: byId("formPhase").value,
+    unit: byId("formUnit").value,
+    type: byId("formType").value,
+    description: byId("formDescription").value,
+    supplier: byId("formSupplier").value,
+    quantity: byId("formQuantity").value,
+    measure: byId("formMeasure").value,
+    unitValue: byId("formValue").value,
+    date: byId("formDate").value,
+    financialStatus: byId("formFinancialStatus").value,
+    dueDate: byId("formDueDate").value,
+    payment: byId("formPayment").value,
+    document: byId("formDocument").value,
+    notes: byId("formNotes").value
+  };
+  if (draft.description || draft.supplier || draft.unitValue || draft.notes) {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+  } else {
+    localStorage.removeItem(DRAFT_KEY);
+  }
+}
+
+function restoreTransactionDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+    if (!draft?.description) return;
+    byId("formPhase").value = draft.phaseId || byId("formPhase").value;
+    byId("formUnit").value = draft.unit || byId("formUnit").value;
+    byId("formType").value = draft.type || "Material";
+    byId("formDescription").value = draft.description || "";
+    byId("formSupplier").value = draft.supplier || "";
+    byId("formQuantity").value = draft.quantity || 1;
+    byId("formMeasure").value = draft.measure || "un";
+    byId("formValue").value = draft.unitValue || "";
+    byId("formDate").value = draft.date || todayIso();
+    byId("formFinancialStatus").value = draft.financialStatus || "Pago";
+    byId("formDueDate").value = draft.dueDate || "";
+    byId("formPayment").value = draft.payment || "";
+    byId("formDocument").value = draft.document || "";
+    byId("formNotes").value = draft.notes || "";
+    byId("transactionDetails").open = Boolean(draft.supplier || draft.dueDate || draft.payment || draft.document || draft.notes);
+    updateTransactionTotalPreview();
+    updateFavoriteButton();
+  } catch {
+    localStorage.removeItem(DRAFT_KEY);
+  }
 }
 
 function startTransactionEdit(id) {
@@ -1308,9 +1742,68 @@ function applyCatalogSelection() {
   const item = findCatalogItem(byId("formDescription").value);
   if (!item) return;
   byId("formType").value = item.type || byId("formType").value;
+  byId("formMeasure").value = item.measure || "un";
   if (item.defaultValue && !Number(byId("formValue").value || 0)) {
     byId("formValue").value = item.defaultValue;
   }
+  updateTransactionTotalPreview();
+  updateFavoriteButton();
+}
+
+function updateFavoriteButton() {
+  const item = findCatalogItem(byId("formDescription")?.value);
+  const favorite = Boolean(item?.favorite);
+  byId("toggleFavoriteDescription").textContent = favorite ? "★" : "☆";
+  byId("toggleFavoriteDescription").setAttribute("aria-pressed", String(favorite));
+  byId("toggleFavoriteDescription").title = favorite ? "Remover dos favoritos" : "Marcar como favorito";
+}
+
+function toggleFavoriteDescription() {
+  const description = byId("formDescription").value.trim();
+  if (!description) {
+    alert("Informe uma descrição antes de marcar como favorita.");
+    return;
+  }
+  const key = description.toLowerCase();
+  const existing = (state.catalog || []).find((item) => String(item.description || "").trim().toLowerCase() === key);
+  const payload = {
+    type: existing?.type || byId("formType").value,
+    description,
+    defaultValue: Number(existing?.defaultValue ?? (byId("formValue").value || 0)),
+    measure: existing?.measure || byId("formMeasure").value || "un",
+    favorite: !Boolean(existing?.favorite)
+  };
+  const formSelections = {
+    phase: byId("formPhase").value,
+    unit: byId("formUnit").value,
+    type: byId("formType").value
+  };
+  state.catalog = [
+    ...(state.catalog || []).filter((item) => String(item.description || "").trim().toLowerCase() !== key),
+    payload
+  ];
+  saveState();
+  renderSelects();
+  byId("formPhase").value = formSelections.phase;
+  byId("formUnit").value = formSelections.unit;
+  byId("formType").value = formSelections.type;
+  updateFavoriteButton();
+}
+
+function updateTransactionTotalPreview() {
+  const quantity = Number(byId("formQuantity")?.value || 0);
+  const unitValue = Number(byId("formValue")?.value || 0);
+  byId("formTotalPreview").textContent = money.format(quantity * unitValue);
+}
+
+function findPossibleDuplicate(item) {
+  return state.transactions.find((entry) =>
+    entry.id !== item.id &&
+    entry.date === item.date &&
+    String(entry.description || "").trim().toLowerCase() === item.description.toLowerCase() &&
+    String(entry.supplier || "").trim().toLowerCase() === item.supplier.toLowerCase() &&
+    Math.abs(Number(entry.total || 0) - Number(item.total || 0)) < 0.01
+  );
 }
 
 function openDescriptionDialog() {
@@ -1324,7 +1817,176 @@ function openPdfReportDialog() {
   byId("pdfReportDialog").showModal();
 }
 
+function openSettingsDialog() {
+  const project = state.project || {};
+  const safetyBackup = loadPortfolioSafetyBackup();
+  byId("settingsProjectName").value = project.name || "";
+  byId("settingsDocument").value = project.document || "";
+  byId("settingsPhone").value = project.phone || "";
+  byId("settingsEmail").value = project.email || "";
+  byId("settingsAddress").value = project.address || "";
+  byId("settingsCity").value = project.city || "";
+  byId("settingsAllocation").value = project.allocationMethod || "equal";
+  byId("restoreSafetyBackup").hidden = !safetyBackup;
+  byId("restoreSafetyBackup").title = safetyBackup
+    ? `Cópia criada em ${new Date(safetyBackup.createdAt).toLocaleString("pt-BR")}`
+    : "";
+  byId("settingsDialog").showModal();
+}
+
+function restorePortfolioSafetyBackup() {
+  const backup = loadPortfolioSafetyBackup();
+  if (!backup) {
+    alert("Nenhum backup de segurança está disponível.");
+    return;
+  }
+  const restoredPortfolio = validatePortfolioImport({
+    portfolioVersion: 1,
+    ...backup.portfolio
+  });
+  const createdAt = new Date(backup.createdAt).toLocaleString("pt-BR");
+  const confirmed = confirm(`Restaurar a cópia de segurança criada em ${createdAt}?\nOs dados atuais serão guardados para permitir desfazer esta restauração.`);
+  if (!confirmed) return;
+
+  const currentPortfolio = structuredClone(portfolio);
+  portfolio = restoredPortfolio;
+  state = migrateState(activeProjectRecord().data);
+  localStorage.setItem(SAFETY_BACKUP_KEY, JSON.stringify({
+    createdAt: new Date().toISOString(),
+    reason: "Antes da restauração",
+    portfolio: currentPortfolio
+  }));
+  saveState();
+  resetTransactionForm();
+  byId("settingsDialog").close();
+  renderAll();
+  alert("Backup restaurado com sucesso.");
+}
+
+function switchActiveProject(projectId) {
+  if (projectId === portfolio.activeProjectId) return;
+  saveState();
+  const target = portfolio.projects.find((entry) => entry.id === projectId);
+  if (!target) return;
+  portfolio.activeProjectId = projectId;
+  state = migrateState(target.data);
+  localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(portfolio));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  resetTransactionForm();
+  renderAll();
+}
+
+function createProjectFromForm() {
+  const project = {
+    name: byId("newProjectName").value.trim(),
+    address: byId("newProjectAddress").value.trim(),
+    city: byId("newProjectCity").value.trim()
+  };
+  if (!project.name) return;
+  saveState();
+  const id = createLocalId("obra");
+  const data = blankProjectState(project);
+  portfolio.projects.push({
+    id,
+    name: project.name,
+    data,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  portfolio.activeProjectId = id;
+  state = data;
+  saveState();
+  resetTransactionForm();
+  byId("newProjectForm").reset();
+  byId("newProjectDialog").close();
+  renderAll();
+}
+
+function renderTrash() {
+  byId("trashList").innerHTML = (state.trash || []).map((item) => `
+    <article class="trash-item">
+      <div>
+        <strong>${escapeHtml(item.description)}</strong>
+        <span class="muted">${formatDate(item.date)} | ${escapeHtml(phaseName(item.phaseId))} | ${money.format(item.total)}</span>
+      </div>
+      <div class="trash-item-actions">
+        <button class="ghost-button" type="button" data-restore-transaction="${item.id}">Restaurar</button>
+        <button class="delete-button" type="button" data-purge-transaction="${item.id}">Excluir definitivamente</button>
+      </div>
+    </article>
+  `).join("") || '<p class="muted">A lixeira está vazia.</p>';
+}
+
+function openTrashDialog() {
+  renderTrash();
+  byId("trashDialog").showModal();
+}
+
+function showUndoDelete(item) {
+  lastDeletedTransactionId = item.id;
+  byId("undoMessage").textContent = `"${item.description}" foi movido para a lixeira.`;
+  byId("undoToast").hidden = false;
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => {
+    byId("undoToast").hidden = true;
+    lastDeletedTransactionId = null;
+  }, 8000);
+}
+
+function moveTransactionToTrash(id) {
+  const item = state.transactions.find((entry) => entry.id === Number(id));
+  if (!item) return;
+  state.transactions = state.transactions.filter((entry) => entry.id !== item.id);
+  state.trash = [
+    { ...item, deletedAt: new Date().toISOString() },
+    ...(state.trash || []).filter((entry) => entry.id !== item.id)
+  ];
+  if (editingTransactionId === item.id) resetTransactionForm();
+  saveState();
+  renderAll();
+  showUndoDelete(item);
+}
+
+function restoreTransaction(id) {
+  const item = (state.trash || []).find((entry) => entry.id === Number(id));
+  if (!item) return;
+  const restored = { ...item };
+  delete restored.deletedAt;
+  if (state.transactions.some((entry) => entry.id === restored.id)) {
+    restored.id = nextId(state.transactions);
+  }
+  state.trash = state.trash.filter((entry) => entry.id !== item.id);
+  state.transactions.push(restored);
+  saveState();
+  renderAll();
+  renderTrash();
+  byId("undoToast").hidden = true;
+  lastDeletedTransactionId = null;
+}
+
+function registerPwa() {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return;
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  }
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    byId("installApp").hidden = false;
+  });
+}
+
 function wireEvents() {
+  byId("projectSelector").addEventListener("change", (event) => {
+    switchActiveProject(event.target.value);
+  });
+  byId("newProject").addEventListener("click", () => byId("newProjectDialog").showModal());
+  byId("cancelNewProject").addEventListener("click", () => byId("newProjectDialog").close());
+  byId("newProjectForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    createProjectFromForm();
+  });
+
   document.querySelectorAll(".tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       document.querySelectorAll(".tab, .view").forEach((item) => item.classList.remove("is-active"));
@@ -1355,6 +2017,13 @@ function wireEvents() {
 
   byId("addDescriptionFromLaunch").addEventListener("click", openDescriptionDialog);
   byId("formDescription").addEventListener("change", applyCatalogSelection);
+  byId("formDescription").addEventListener("input", updateFavoriteButton);
+  byId("toggleFavoriteDescription").addEventListener("click", toggleFavoriteDescription);
+  ["formQuantity", "formValue"].forEach((id) => {
+    byId(id).addEventListener("input", updateTransactionTotalPreview);
+  });
+  byId("transactionForm").addEventListener("input", saveTransactionDraft);
+  byId("transactionForm").addEventListener("change", saveTransactionDraft);
   byId("cancelDescription").addEventListener("click", () => byId("descriptionDialog").close());
   byId("descriptionForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1363,7 +2032,9 @@ function wireEvents() {
     const item = {
       type: byId("descriptionType").value,
       description,
-      defaultValue: Number(byId("descriptionDefaultValue").value || 0)
+      defaultValue: Number(byId("descriptionDefaultValue").value || 0),
+      measure: byId("formMeasure").value || "un",
+      favorite: Boolean(findCatalogItem(description)?.favorite)
     };
     state.catalog = [
       ...(state.catalog || []).filter((entry) => String(entry.description || "").trim().toLowerCase() !== description.toLowerCase()),
@@ -1380,7 +2051,7 @@ function wireEvents() {
     byId("formQuantity").focus();
   });
 
-  ["searchInput", "phaseFilter", "typeFilter", "unitFilter"].forEach((id) => {
+  ["searchInput", "phaseFilter", "typeFilter", "unitFilter", "statusFilter", "supplierFilter", "startDateFilter", "endDateFilter"].forEach((id) => {
     byId(id).addEventListener("input", () => {
       renderDashboard();
       renderTransactions();
@@ -1392,6 +2063,11 @@ function wireEvents() {
     byId("searchInput").value = "";
     byId("phaseFilter").value = "Todas";
     byId("typeFilter").value = "Todos";
+    byId("unitFilter").value = "Todas";
+    byId("statusFilter").value = "Todos";
+    byId("supplierFilter").value = "";
+    byId("startDateFilter").value = "";
+    byId("endDateFilter").value = "";
     renderDashboard();
     renderTransactions();
   });
@@ -1399,6 +2075,11 @@ function wireEvents() {
   byId("transactionForm").addEventListener("submit", (event) => {
     event.preventDefault();
     const item = transactionFromForm(editingTransactionId || nextId(state.transactions));
+    const duplicate = findPossibleDuplicate(item);
+    if (duplicate) {
+      const confirmed = confirm(`Já existe um lançamento parecido em ${formatDate(duplicate.date)}, no valor de ${money.format(duplicate.total)}.\nDeseja salvar mesmo assim?`);
+      if (!confirmed) return;
+    }
     if (editingTransactionId) {
       state.transactions = state.transactions.map((entry) => entry.id === editingTransactionId ? item : entry);
     } else {
@@ -1416,6 +2097,18 @@ function wireEvents() {
   });
 
   byId("transactionRows").addEventListener("click", (event) => {
+    const paidButton = event.target.closest("[data-mark-paid]");
+    if (paidButton) {
+      const id = Number(paidButton.dataset.markPaid);
+      state.transactions = state.transactions.map((entry) => entry.id === id
+        ? { ...entry, financialStatus: "Pago", paidAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+        : entry
+      );
+      saveState();
+      renderAll();
+      return;
+    }
+
     const editButton = event.target.closest("[data-edit]");
     if (editButton) {
       startTransactionEdit(editButton.dataset.edit);
@@ -1427,14 +2120,9 @@ function wireEvents() {
     const id = Number(deleteButton.dataset.delete);
     const item = state.transactions.find((entry) => entry.id === id);
     if (!item) return;
-    const confirmed = confirm(`Excluir o lançamento "${item.description}"?\nEsta ação não pode ser desfeita.`);
+    const confirmed = confirm(`Mover o lançamento "${item.description}" para a lixeira?`);
     if (!confirmed) return;
-    state.transactions = state.transactions.filter((entry) => entry.id !== id);
-    if (editingTransactionId === id) {
-      resetTransactionForm();
-    }
-    saveState();
-    renderAll();
+    moveTransactionToTrash(id);
   });
 
   byId("addPhase").addEventListener("click", () => {
@@ -1520,7 +2208,9 @@ function wireEvents() {
       name: byId("phaseName").value.trim(),
       budget: Number(byId("phaseBudget").value || 0),
       start: byId("phaseStart").value,
-      end: byId("phaseEnd").value
+      end: byId("phaseEnd").value,
+      status: byId("phaseStatus").value,
+      progress: Math.min(100, Math.max(0, Number(byId("phaseProgress").value || 0)))
     };
     if (id) {
       state.phases = state.phases.map((phase) => phase.id === id ? payload : phase);
@@ -1564,6 +2254,68 @@ function wireEvents() {
     renderAll();
   });
 
+  byId("openSettings").addEventListener("click", openSettingsDialog);
+  byId("cancelSettings").addEventListener("click", () => byId("settingsDialog").close());
+  byId("restoreSafetyBackup").addEventListener("click", restorePortfolioSafetyBackup);
+  byId("settingsForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.project = {
+      ...state.project,
+      name: byId("settingsProjectName").value.trim(),
+      document: byId("settingsDocument").value.trim(),
+      phone: byId("settingsPhone").value.trim(),
+      email: byId("settingsEmail").value.trim(),
+      address: byId("settingsAddress").value.trim(),
+      city: byId("settingsCity").value.trim(),
+      allocationMethod: byId("settingsAllocation").value
+    };
+    saveState();
+    byId("settingsDialog").close();
+    renderAll();
+  });
+  byId("exportPortfolio").addEventListener("click", () => {
+    saveState();
+    download(
+      `backup-todas-obras-${todayIso()}.json`,
+      JSON.stringify({ portfolioVersion: 1, ...portfolio }, null, 2),
+      "application/json"
+    );
+  });
+
+  byId("trashTransactions").addEventListener("click", openTrashDialog);
+  byId("closeTrash").addEventListener("click", () => byId("trashDialog").close());
+  byId("trashList").addEventListener("click", (event) => {
+    const restoreButton = event.target.closest("[data-restore-transaction]");
+    if (restoreButton) {
+      restoreTransaction(restoreButton.dataset.restoreTransaction);
+      return;
+    }
+    const purgeButton = event.target.closest("[data-purge-transaction]");
+    if (!purgeButton) return;
+    const id = Number(purgeButton.dataset.purgeTransaction);
+    const item = (state.trash || []).find((entry) => entry.id === id);
+    if (!item) return;
+    const confirmed = confirm(`Excluir definitivamente "${item.description}"?\nDepois disso não será possível recuperar.`);
+    if (!confirmed) return;
+    state.trash = state.trash.filter((entry) => entry.id !== id);
+    saveState();
+    renderTrash();
+  });
+
+  byId("undoDelete").addEventListener("click", () => {
+    if (lastDeletedTransactionId !== null) {
+      restoreTransaction(lastDeletedTransactionId);
+    }
+  });
+
+  byId("installApp").addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    byId("installApp").hidden = true;
+  });
+
   byId("exportJson").addEventListener("click", () => {
     download("gestao-obras-casa-germinada.json", JSON.stringify(state, null, 2), "application/json");
   });
@@ -1583,5 +2335,7 @@ function wireEvents() {
 
 byId("formDate").value = todayIso();
 renderAll();
+restoreTransactionDraft();
 wireEvents();
+registerPwa();
 setInterval(refreshWorkModeDate, 60000);

@@ -87,6 +87,11 @@ button {
   justify-content: flex-end;
 }
 
+.project-selector {
+  width: min(240px, 100%);
+  min-width: 180px;
+}
+
 .primary-button,
 .ghost-button,
 .icon-button,
@@ -233,7 +238,7 @@ button {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
   margin-bottom: 16px;
 }
@@ -342,10 +347,75 @@ textarea {
   flex: 1;
 }
 
+.form-row-three {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, .6fr) minmax(0, 1fr);
+}
+
+.calculated-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #b8d4ca;
+  border-radius: 6px;
+  background: #eef7f3;
+}
+
+.calculated-total span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.calculated-total strong {
+  font-size: 18px;
+}
+
+.form-optional {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fafcfb;
+}
+
+.form-optional summary {
+  cursor: pointer;
+  padding: 11px 12px;
+  font-weight: 700;
+}
+
+.optional-fields {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+}
+
+.optional-fields .form-row,
+.optional-fields button {
+  margin-top: 0;
+}
+
 .field-with-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.field-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.field-with-action button {
+  margin-top: 0;
+}
+
+.icon-symbol-button {
+  width: 42px;
+  padding-inline: 0;
+  font-size: 20px;
 }
 
 .compact-button {
@@ -355,6 +425,7 @@ textarea {
 
 .filter-row {
   align-items: stretch;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 
@@ -365,6 +436,11 @@ textarea {
 
 .filter-row .select {
   max-width: 210px;
+}
+
+.filter-row input[type="date"] {
+  min-width: 150px;
+  flex: 0 1 170px;
 }
 
 .bar-list,
@@ -718,6 +794,11 @@ dialog::backdrop {
   width: min(680px, calc(100% - 24px));
 }
 
+#settingsDialog,
+#trashDialog {
+  width: min(720px, calc(100% - 24px));
+}
+
 .dialog-form {
   display: grid;
   gap: 14px;
@@ -730,6 +811,80 @@ dialog::backdrop {
   gap: 10px;
   margin: 0;
   padding: 0;
+}
+
+.trash-list {
+  display: grid;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.trash-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.trash-item strong,
+.trash-item span {
+  display: block;
+}
+
+.trash-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.undo-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(440px, calc(100% - 24px));
+  padding: 10px 12px;
+  border: 1px solid #334b45;
+  border-radius: 6px;
+  color: #fff;
+  background: #20332f;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, .22);
+}
+
+.undo-toast[hidden] {
+  display: none;
+}
+
+.undo-toast .ghost-button {
+  min-height: 34px;
+  color: #fff;
+  border-color: rgba(255, 255, 255, .5);
+}
+
+.status-paid {
+  color: #176146;
+  background: #e4f4ed;
+}
+
+.status-pending {
+  color: #8a4b08;
+  background: #fff0dc;
+}
+
+.status-planned {
+  color: #34526e;
+  background: #e7f0f7;
+}
+
+.status-cancelled {
+  color: #6d6d6d;
+  background: #efefef;
 }
 
 @media (max-width: 980px) {
@@ -768,6 +923,10 @@ dialog::backdrop {
     flex: 1;
   }
 
+  .project-selector {
+    width: 100%;
+  }
+
   .stats-grid,
   .phase-grid,
   .unit-grid,
@@ -779,6 +938,7 @@ dialog::backdrop {
 
   .filter-row,
   .form-row,
+  .form-row-three,
   .field-with-action,
   .ranking-item,
   .abc-item,
@@ -790,6 +950,19 @@ dialog::backdrop {
 
   .field-with-action {
     grid-template-columns: 1fr;
+  }
+
+  .field-actions button:last-child {
+    flex: 1;
+  }
+
+  .form-row-three {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .form-row-three label:last-child {
+    grid-column: 1 / -1;
   }
 
   .ranking-item {
@@ -814,6 +987,29 @@ dialog::backdrop {
 
   .filter-row .select {
     max-width: none;
+  }
+
+  .filter-row input[type="date"] {
+    flex-basis: auto;
+  }
+
+  .form-panel > #transactionSubmit {
+    position: sticky;
+    bottom: 8px;
+    z-index: 4;
+    box-shadow: 0 8px 22px rgba(16, 71, 59, .26);
+  }
+
+  .trash-item {
+    grid-template-columns: 1fr;
+  }
+
+  .trash-item-actions {
+    width: 100%;
+  }
+
+  .trash-item-actions button {
+    flex: 1;
   }
 
   .section-title h2,

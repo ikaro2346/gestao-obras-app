@@ -6,16 +6,22 @@
     <meta name="theme-color" content="#1d4d4f">
     <title>Gestão de Obras</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="stylesheet" href="./styles.css?v=11">
+    <link rel="icon" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <link rel="stylesheet" href="./styles.css?v=12">
   </head>
   <body>
     <header class="app-header">
       <div>
         <p class="eyebrow">Controle de obra</p>
-        <h1>Casa Germinada</h1>
+        <h1 id="projectTitle">Casa Germinada</h1>
         <p id="projectMeta" class="muted"></p>
       </div>
       <div class="header-actions">
+        <select id="projectSelector" class="select project-selector" aria-label="Obra ativa"></select>
+        <button id="newProject" class="ghost-button" type="button">Nova obra</button>
+        <button id="installApp" class="ghost-button" type="button" hidden>Instalar</button>
+        <button id="openSettings" class="ghost-button" type="button">Configurar</button>
         <button id="printReport" class="icon-button" type="button" aria-label="Gerar relatório em PDF">PDF</button>
         <button id="importJson" class="ghost-button" type="button">Importar</button>
         <input id="importJsonInput" type="file" accept=".json" hidden>
@@ -80,6 +86,11 @@
             <span>Custo por tipo</span>
             <strong id="topType">-</strong>
             <small id="topTypeValue">R$ 0,00</small>
+          </article>
+          <article class="stat-card">
+            <span>Contas a pagar</span>
+            <strong id="pendingTotal">R$ 0,00</strong>
+            <small id="pendingCount">0 pendências</small>
           </article>
         </div>
 
@@ -172,21 +183,33 @@
               Descrição
               <span class="field-with-action">
                 <input id="formDescription" list="catalogList" autocomplete="off" required>
-                <button id="addDescriptionFromLaunch" class="ghost-button compact-button" type="button">Nova</button>
+                <span class="field-actions">
+                  <button id="toggleFavoriteDescription" class="ghost-button compact-button icon-symbol-button" type="button" aria-label="Marcar descrição como favorita" title="Favorito">☆</button>
+                  <button id="addDescriptionFromLaunch" class="ghost-button compact-button" type="button">Nova</button>
+                </span>
               </span>
               <datalist id="catalogList"></datalist>
             </label>
 
-            <label>
-              Fornecedor / loja
-              <input id="formSupplier" list="supplierList" autocomplete="off" placeholder="Ex.: Depósito, empreiteiro, prefeitura">
-              <datalist id="supplierList"></datalist>
-            </label>
-
-            <div class="form-row">
+            <div class="form-row form-row-three">
               <label>
-                Quantidade / tempo
+                Quantidade
                 <input id="formQuantity" type="number" min="0" step="0.01" value="1" required>
+              </label>
+              <label>
+                Unidade
+                <select id="formMeasure">
+                  <option>un</option>
+                  <option>m</option>
+                  <option>m²</option>
+                  <option>m³</option>
+                  <option>kg</option>
+                  <option>saco</option>
+                  <option>hora</option>
+                  <option>dia</option>
+                  <option>mês</option>
+                  <option>serviço</option>
+                </select>
               </label>
               <label>
                 Valor unitário
@@ -194,22 +217,9 @@
               </label>
             </div>
 
-            <div class="form-row">
-              <label>
-                Pagamento
-                <select id="formPayment">
-                  <option value="">Não informado</option>
-                  <option>Pix</option>
-                  <option>Dinheiro</option>
-                  <option>Cartão</option>
-                  <option>Boleto</option>
-                  <option>Transferência</option>
-                </select>
-              </label>
-              <label>
-                Nota / recibo
-                <input id="formDocument" autocomplete="off" placeholder="Número ou referência">
-              </label>
+            <div class="calculated-total" aria-live="polite">
+              <span>Total do lançamento</span>
+              <strong id="formTotalPreview">R$ 0,00</strong>
             </div>
 
             <label>
@@ -217,10 +227,55 @@
               <input id="formDate" type="date" required>
             </label>
 
-            <label>
-              Observações
-              <textarea id="formNotes" rows="3"></textarea>
-            </label>
+            <details id="transactionDetails" class="form-optional">
+              <summary>Mais informações</summary>
+              <div class="optional-fields">
+                <div class="form-row">
+                  <label>
+                    Situação
+                    <select id="formFinancialStatus">
+                      <option>Pago</option>
+                      <option>A pagar</option>
+                      <option>Previsto</option>
+                      <option>Cancelado</option>
+                    </select>
+                  </label>
+                  <label>
+                    Vencimento
+                    <input id="formDueDate" type="date">
+                  </label>
+                </div>
+
+                <label>
+                  Fornecedor / loja
+                  <input id="formSupplier" list="supplierList" autocomplete="off" placeholder="Ex.: Depósito, empreiteiro, prefeitura">
+                  <datalist id="supplierList"></datalist>
+                </label>
+
+                <div class="form-row">
+                  <label>
+                    Pagamento
+                    <select id="formPayment">
+                      <option value="">Não informado</option>
+                      <option>Pix</option>
+                      <option>Dinheiro</option>
+                      <option>Cartão</option>
+                      <option>Boleto</option>
+                      <option>Transferência</option>
+                    </select>
+                  </label>
+                  <label>
+                    Nota / recibo
+                    <input id="formDocument" autocomplete="off" placeholder="Número ou referência">
+                  </label>
+                </div>
+
+                <label>
+                  Observações
+                  <textarea id="formNotes" rows="3"></textarea>
+                </label>
+              </div>
+            </details>
 
             <button id="transactionSubmit" class="primary-button full" type="submit">Adicionar lançamento</button>
             <button id="cancelTransactionEdit" class="ghost-button full edit-cancel-button" type="button" hidden>Cancelar edição</button>
@@ -232,7 +287,10 @@
                 <p class="eyebrow">Consulta</p>
                 <h2>Lançamentos</h2>
               </div>
-              <button id="clearFilters" class="ghost-button" type="button">Limpar filtros</button>
+              <div class="report-actions">
+                <button id="trashTransactions" class="ghost-button" type="button">Lixeira</button>
+                <button id="clearFilters" class="ghost-button" type="button">Limpar filtros</button>
+              </div>
             </div>
 
             <div class="filter-row">
@@ -241,6 +299,16 @@
               <select id="typeFilter" class="select" aria-label="Filtrar tipo">
                 <option value="Todos">Todos os tipos</option>
               </select>
+              <select id="statusFilter" class="select" aria-label="Filtrar situação">
+                <option value="Todos">Todas as situações</option>
+                <option>Pago</option>
+                <option>A pagar</option>
+                <option>Previsto</option>
+                <option>Cancelado</option>
+              </select>
+              <input id="supplierFilter" class="input" list="supplierList" autocomplete="off" placeholder="Fornecedor">
+              <input id="startDateFilter" class="input" type="date" aria-label="Data inicial">
+              <input id="endDateFilter" class="input" type="date" aria-label="Data final">
             </div>
 
             <div class="table-wrap">
@@ -365,6 +433,91 @@
       </section>
     </main>
 
+    <dialog id="settingsDialog">
+      <form method="dialog" id="settingsForm" class="dialog-form">
+        <h2>Configurações da obra</h2>
+        <label>
+          Nome da obra
+          <input id="settingsProjectName" required>
+        </label>
+        <div class="form-row">
+          <label>
+            CNPJ / CPF
+            <input id="settingsDocument">
+          </label>
+          <label>
+            Telefone
+            <input id="settingsPhone">
+          </label>
+        </div>
+        <label>
+          E-mail
+          <input id="settingsEmail" type="email">
+        </label>
+        <label>
+          Endereço
+          <input id="settingsAddress">
+        </label>
+        <label>
+          Cidade
+          <input id="settingsCity">
+        </label>
+        <label>
+          Rateio dos custos gerais
+          <select id="settingsAllocation">
+            <option value="equal">Dividir igualmente entre as unidades</option>
+            <option value="area">Dividir proporcionalmente pela área</option>
+          </select>
+        </label>
+        <button id="restoreSafetyBackup" class="ghost-button full" type="button" hidden>Restaurar backup anterior</button>
+        <button id="exportPortfolio" class="ghost-button full" type="button">Backup de todas as obras</button>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelSettings">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Salvar configurações</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="newProjectDialog">
+      <form method="dialog" id="newProjectForm" class="dialog-form">
+        <h2>Nova obra</h2>
+        <label>
+          Nome da obra
+          <input id="newProjectName" required placeholder="Ex.: Residencial São Pedro">
+        </label>
+        <label>
+          Endereço
+          <input id="newProjectAddress">
+        </label>
+        <label>
+          Cidade
+          <input id="newProjectCity">
+        </label>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelNewProject">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Criar obra</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="trashDialog">
+      <section class="dialog-form trash-dialog-content">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Recuperação</p>
+            <h2>Lixeira de lançamentos</h2>
+          </div>
+          <button id="closeTrash" class="ghost-button" type="button">Fechar</button>
+        </div>
+        <div id="trashList" class="trash-list"></div>
+      </section>
+    </dialog>
+
+    <div id="undoToast" class="undo-toast" role="status" aria-live="polite" hidden>
+      <span id="undoMessage"></span>
+      <button id="undoDelete" class="ghost-button" type="button">Desfazer</button>
+    </div>
+
     <dialog id="pdfReportDialog">
       <form method="dialog" id="pdfReportForm" class="dialog-form">
         <h2>Gerar relatório em PDF</h2>
@@ -414,6 +567,19 @@
         <label>
           Valor orçado
           <input id="phaseBudget" type="number" min="0" step="0.01">
+        </label>
+        <label>
+          Situação
+          <select id="phaseStatus">
+            <option>Planejada</option>
+            <option>Em execução</option>
+            <option>Pausada</option>
+            <option>Concluída</option>
+          </select>
+        </label>
+        <label>
+          Avanço físico (%)
+          <input id="phaseProgress" type="number" min="0" max="100" step="1" value="0">
         </label>
         <div class="form-row">
           <label>
@@ -487,6 +653,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=11"></script>
+    <script src="./app.js?v=12"></script>
   </body>
 </html>
