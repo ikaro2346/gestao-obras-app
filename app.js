@@ -1039,28 +1039,33 @@ function download(filename, content, type) {
 }
 
 function exportCsv() {
-  const headers = ["data", "unidade", "etapa", "tipo", "descricao", "fornecedor", "quantidade", "unidade_medida", "valor_unitario", "total", "situacao", "vencimento", "pagamento", "documento", "observacoes"];
+  const headers = ["Data", "Unidade", "Etapa", "Tipo", "Descricao", "Fornecedor", "Quantidade", "Unidade medida", "Valor unitario", "Total", "Situacao", "Vencimento", "Pagamento", "Documento", "Observacoes"];
+  const csvNumber = (value) => Number(value || 0).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const csvText = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const rows = state.transactions.map((item) => [
-    item.date,
+    formatDate(item.date),
     item.unit,
     phaseName(item.phaseId),
     item.type,
     item.description,
     item.supplier || "",
-    item.quantity,
+    csvNumber(item.quantity),
     item.measure || "un",
-    item.unitValue,
-    item.total,
+    csvNumber(item.unitValue),
+    csvNumber(item.total),
     financialStatus(item),
-    item.dueDate || "",
+    item.dueDate ? formatDate(item.dueDate) : "",
     item.payment || "",
     item.document || "",
     item.notes
   ]);
   const csv = [headers, ...rows]
-    .map((row) => row.map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`).join(","))
-    .join("\n");
-  download("lancamentos-casa-germinada.csv", csv, "text/csv;charset=utf-8");
+    .map((row) => row.map(csvText).join(";"))
+    .join("\r\n");
+  download("lancamentos-casa-germinada.csv", `\uFEFF${csv}`, "text/csv;charset=utf-8");
 }
 
 function pdfReportFilters() {
