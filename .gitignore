@@ -1,0 +1,28 @@
+# Arquivos temporários
+*.log
+*.tmp
+*.bak
+
+# Prints e verificações locais
+*-check.png
+abc-check.png
+ranking-dates-check.png
+desktop-check.png
+mobile-check.png
+launch-new-phase-check.png
+
+# Exportações do app
+*.csv
+*.json
+
+# Sistema
+Thumbs.db
+.DS_Store
+
+# Dependências futuras
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example

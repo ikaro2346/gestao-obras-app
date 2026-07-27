@@ -1,0 +1,55 @@
+# Gestão de Obras
+
+Aplicativo web para controle financeiro e operacional de obras residenciais, criado a partir de uma planilha de gestão de obra. A versão atual é um protótipo local, mobile-first, com dados salvos no navegador.
+
+## O Que Já Tem
+
+- Dashboard financeiro com total realizado, orçamento e maiores custos.
+- Cadastro de etapas da obra.
+- Cadastro de unidades/casas para obra geminada.
+- Lançamentos por etapa, unidade, tipo, quantidade, valor e data.
+- Relatório de acompanhamento por fase.
+- Ranking dos itens mais caros.
+- Curva ABC de materiais.
+- Exportação JSON e CSV.
+- Layout responsivo para celular e computador.
+
+## Como Abrir
+
+Abra o arquivo `index.html` no navegador:
+
+```text
+file:///C:/Users/leand/Documents/Codex/2026-07-26/bo/outputs/gestao-obras-app/index.html
+```
+
+## Como Desenvolver
+
+Este projeto ainda não usa build, servidor ou framework. Por enquanto basta editar:
+
+- `index.html`: estrutura das telas.
+- `styles.css`: visual e responsividade.
+- `app.js`: dados, cálculos e interações.
+- `manifest.webmanifest`: configuração básica de app instalável.
+
+Depois de alterar, atualize o navegador com `Ctrl + F5`.
+
+## Fluxo Com GitHub
+
+Use a branch `main` para a versão estável e crie branches para melhorias:
+
+```bash
+git checkout -b feature/nome-da-melhoria
+```
+
+Exemplos:
+
+- `feature/login`
+- `feature/supabase`
+- `feature/anexos-notas`
+- `feature/relatorio-pdf`
+
+Ao finalizar uma melhoria, abra um Pull Request para revisar antes de juntar na `main`.
+
+## Próximos Passos
+
+Veja o roadmap em [docs/roadmap.md](docs/roadmap.md).

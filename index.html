@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1d4d4f">
+    <title>Gestão de Obras</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./styles.css?v=10">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">Controle de obra</p>
+        <h1>Casa Germinada</h1>
+        <p id="projectMeta" class="muted"></p>
+      </div>
+      <div class="header-actions">
+        <button id="printReport" class="icon-button" type="button" aria-label="Imprimir relatório">Imprimir</button>
+        <button id="importJson" class="ghost-button" type="button">Importar</button>
+        <input id="importJsonInput" type="file" accept=".json" hidden>
+        <button id="exportJson" class="primary-button" type="button">Exportar</button>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <nav class="tabs" aria-label="Navegacao principal">
+        <button class="tab is-active" type="button" data-view="dashboard">Dashboard</button>
+        <button class="tab" type="button" data-view="lancamentos">Lançamentos</button>
+        <button class="tab" type="button" data-view="unidades">Unidades</button>
+        <button class="tab" type="button" data-view="etapas">Etapas</button>
+        <button class="tab" type="button" data-view="relatorio">Relatório</button>
+      </nav>
+
+      <section id="dashboard" class="view is-active" aria-labelledby="dashboardTitle">
+        <section class="panel work-mode-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Modo obra</p>
+              <h2>Ações rápidas</h2>
+            </div>
+            <span class="muted" id="todayLabel"></span>
+          </div>
+          <div class="quick-actions">
+            <button class="primary-button quick-action" type="button" data-go-view="lancamentos">Novo gasto</button>
+            <button class="ghost-button quick-action" type="button" id="quickRepeatLast">Repetir último</button>
+            <button class="ghost-button quick-action" type="button" data-go-view="etapas">Ver etapas</button>
+            <button class="ghost-button quick-action" type="button" data-go-view="relatorio">Relatório</button>
+          </div>
+          <div id="todaySummary" class="today-summary"></div>
+        </section>
+
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Resumo financeiro</p>
+            <h2 id="dashboardTitle">Visão geral</h2>
+          </div>
+          <select id="unitFilter" class="select" aria-label="Filtrar unidade">
+            <option value="Todas">Todas as unidades</option>
+          </select>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span>Total realizado</span>
+            <strong id="totalReal">R$ 0,00</strong>
+            <small id="launchCount">0 lançamentos</small>
+          </article>
+          <article class="stat-card">
+            <span>Total orçado</span>
+            <strong id="totalPlanned">R$ 0,00</strong>
+            <small id="budgetStatus">Sem orçamento informado</small>
+          </article>
+          <article class="stat-card">
+            <span>Maior etapa</span>
+            <strong id="topPhase">-</strong>
+            <small id="topPhaseValue">R$ 0,00</small>
+          </article>
+          <article class="stat-card">
+            <span>Custo por tipo</span>
+            <strong id="topType">-</strong>
+            <small id="topTypeValue">R$ 0,00</small>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel">
+            <div class="panel-title">
+              <h3>Realizado por etapa</h3>
+              <span class="muted">Previsto x realizado</span>
+            </div>
+            <div id="phaseBars" class="bar-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <h3>Últimos lançamentos</h3>
+              <span class="muted">Atualizado no navegador</span>
+            </div>
+            <div id="recentList" class="activity-list"></div>
+          </section>
+        </div>
+
+        <div class="dashboard-grid secondary-dashboard">
+          <section class="panel">
+            <div class="panel-title">
+              <h3>Ranking dos itens</h3>
+              <select id="rankingLimit" class="select compact-select" aria-label="Quantidade no ranking">
+                <option value="5">Top 5</option>
+                <option value="15">Top 15</option>
+              </select>
+            </div>
+            <div id="costRanking" class="ranking-list"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <h3>Datas por fase</h3>
+              <span class="muted">Início, fim e duração</span>
+            </div>
+            <div id="phaseTimeline" class="timeline-list"></div>
+          </section>
+        </div>
+
+        <div class="dashboard-grid secondary-dashboard">
+          <section class="panel wide-panel">
+            <div class="panel-title">
+              <h3>Curva ABC de materiais</h3>
+              <span class="muted">A até 80%, B até 95%, C restante</span>
+            </div>
+            <div id="abcSummary" class="abc-summary"></div>
+            <div id="abcList" class="abc-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="lancamentos" class="view" aria-labelledby="lancamentosTitle">
+        <div class="split-layout">
+          <form id="transactionForm" class="panel form-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Entrada rapida</p>
+                <h2 id="lancamentosTitle">Novo lançamento</h2>
+              </div>
+            </div>
+            <button id="addPhaseFromLaunchTop" class="ghost-button full pre-form-action" type="button">Cadastrar nova etapa</button>
+
+            <label>
+              Etapa
+              <span class="field-with-action">
+                <select id="formPhase" required></select>
+                <button id="addPhaseFromLaunch" class="ghost-button compact-button" type="button">Nova</button>
+              </span>
+            </label>
+
+            <label>
+              Unidade
+              <select id="formUnit" required></select>
+            </label>
+
+            <label>
+              Tipo
+              <select id="formType" required>
+                <option value="Material">Material</option>
+                <option value="Serviços">Serviços</option>
+                <option value="Documentação">Documentação</option>
+                <option value="Ferramenta">Ferramenta</option>
+              </select>
+            </label>
+
+            <label>
+              Descrição
+              <span class="field-with-action">
+                <input id="formDescription" list="catalogList" autocomplete="off" required>
+                <button id="addDescriptionFromLaunch" class="ghost-button compact-button" type="button">Nova</button>
+              </span>
+              <datalist id="catalogList"></datalist>
+            </label>
+
+            <label>
+              Fornecedor / loja
+              <input id="formSupplier" list="supplierList" autocomplete="off" placeholder="Ex.: Depósito, empreiteiro, prefeitura">
+              <datalist id="supplierList"></datalist>
+            </label>
+
+            <div class="form-row">
+              <label>
+                Quantidade / tempo
+                <input id="formQuantity" type="number" min="0" step="0.01" value="1" required>
+              </label>
+              <label>
+                Valor unitário
+                <input id="formValue" type="number" min="0" step="0.01" required>
+              </label>
+            </div>
+
+            <div class="form-row">
+              <label>
+                Pagamento
+                <select id="formPayment">
+                  <option value="">Não informado</option>
+                  <option>Pix</option>
+                  <option>Dinheiro</option>
+                  <option>Cartão</option>
+                  <option>Boleto</option>
+                  <option>Transferência</option>
+                </select>
+              </label>
+              <label>
+                Nota / recibo
+                <input id="formDocument" autocomplete="off" placeholder="Número ou referência">
+              </label>
+            </div>
+
+            <label>
+              Data
+              <input id="formDate" type="date" required>
+            </label>
+
+            <label>
+              Observações
+              <textarea id="formNotes" rows="3"></textarea>
+            </label>
+
+            <button id="transactionSubmit" class="primary-button full" type="submit">Adicionar lançamento</button>
+            <button id="cancelTransactionEdit" class="ghost-button full edit-cancel-button" type="button" hidden>Cancelar edição</button>
+          </form>
+
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Consulta</p>
+                <h2>Lançamentos</h2>
+              </div>
+              <button id="clearFilters" class="ghost-button" type="button">Limpar filtros</button>
+            </div>
+
+            <div class="filter-row">
+              <input id="searchInput" class="input" type="search" placeholder="Buscar descrição">
+              <select id="phaseFilter" class="select" aria-label="Filtrar etapa"></select>
+              <select id="typeFilter" class="select" aria-label="Filtrar tipo">
+                <option value="Todos">Todos os tipos</option>
+              </select>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Etapa</th>
+                    <th>Descrição</th>
+                    <th>Fornecedor</th>
+                    <th class="number">Total</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="transactionRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="unidades" class="view" aria-labelledby="unidadesTitle">
+        <section class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Obra geminada</p>
+              <h2 id="unidadesTitle">Unidades da obra</h2>
+            </div>
+            <button id="addUnit" class="primary-button" type="button">Nova unidade</button>
+          </div>
+          <div id="unitCards" class="unit-grid"></div>
+        </section>
+      </section>
+
+      <section id="etapas" class="view" aria-labelledby="etapasTitle">
+        <section class="panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Planejamento</p>
+              <h2 id="etapasTitle">Etapas da obra</h2>
+            </div>
+            <button id="addPhase" class="primary-button" type="button">Nova etapa</button>
+          </div>
+          <div id="phaseCards" class="phase-grid"></div>
+        </section>
+      </section>
+
+      <section id="relatorio" class="view" aria-labelledby="relatorioTitle">
+        <section class="panel report-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Relatório gerencial</p>
+              <h2 id="relatorioTitle">Acompanhamento da obra</h2>
+            </div>
+            <button id="exportCsv" class="ghost-button" type="button">Exportar CSV</button>
+          </div>
+          <div id="reportSummary" class="report-summary"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Etapa</th>
+                  <th class="number">Orçado</th>
+                  <th class="number">Realizado</th>
+                  <th class="number">Saldo</th>
+                  <th class="number">% usado</th>
+                  <th>Início</th>
+                  <th>Fim</th>
+                  <th class="number">Duração</th>
+                </tr>
+              </thead>
+              <tbody id="reportRows"></tbody>
+            </table>
+          </div>
+          <div class="report-block">
+            <div class="panel-title">
+              <h3>Top 15 itens mais caros</h3>
+              <span class="muted">Itens consolidados por descrição</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Item</th>
+                    <th>Tipo</th>
+                    <th>Etapa principal</th>
+                    <th class="number">Qtd.</th>
+                    <th class="number">Total</th>
+                  </tr>
+                </thead>
+                <tbody id="rankingRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="report-block">
+            <div class="panel-title">
+              <h3>Curva ABC de materiais</h3>
+              <span class="muted">Classificação por impacto financeiro acumulado</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Classe</th>
+                    <th>Material</th>
+                    <th>Etapa principal</th>
+                    <th class="number">Qtd.</th>
+                    <th class="number">Total</th>
+                    <th class="number">% item</th>
+                    <th class="number">% acumulado</th>
+                  </tr>
+                </thead>
+                <tbody id="abcRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="phaseDialog">
+      <form method="dialog" id="phaseForm" class="dialog-form">
+        <h2>Etapa da obra</h2>
+        <input id="phaseId" type="hidden">
+        <label>
+          Nome
+          <input id="phaseName" required>
+        </label>
+        <label>
+          Valor orçado
+          <input id="phaseBudget" type="number" min="0" step="0.01">
+        </label>
+        <div class="form-row">
+          <label>
+            Inicio
+            <input id="phaseStart" type="date">
+          </label>
+          <label>
+            Fim
+            <input id="phaseEnd" type="date">
+          </label>
+        </div>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelPhase">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="unitDialog">
+      <form method="dialog" id="unitForm" class="dialog-form">
+        <h2>Unidade</h2>
+        <input id="unitId" type="hidden">
+        <label>
+          Nome
+          <input id="unitName" required>
+        </label>
+        <label>
+          Área privativa (m²)
+          <input id="unitArea" type="number" min="0" step="0.01">
+        </label>
+        <label>
+          Status
+          <select id="unitStatus">
+            <option>Planejada</option>
+            <option>Em execução</option>
+            <option>Pausada</option>
+            <option>Concluída</option>
+          </select>
+        </label>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelUnit">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="descriptionDialog">
+      <form method="dialog" id="descriptionForm" class="dialog-form">
+        <h2>Descrição / item</h2>
+        <label>
+          Tipo
+          <select id="descriptionType">
+            <option>Material</option>
+            <option>Serviços</option>
+            <option>Documentação</option>
+            <option>Ferramenta</option>
+          </select>
+        </label>
+        <label>
+          Descrição
+          <input id="descriptionName" required>
+        </label>
+        <label>
+          Valor unitário padrão
+          <input id="descriptionDefaultValue" type="number" min="0" step="0.01" placeholder="Opcional">
+        </label>
+        <menu>
+          <button class="ghost-button" value="cancel" type="button" id="cancelDescription">Cancelar</button>
+          <button class="primary-button" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="./app.js?v=10"></script>
+  </body>
+</html>
