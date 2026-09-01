@@ -3,7 +3,7 @@ const BACKUP_KEY = "gestao-obras-backups-v1";
 const DRAFT_KEY = "gestao-obras-lancamento-rascunho-v1";
 const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 const seedData = {
   "project": {
@@ -2432,81 +2432,8 @@ function normalizedImportKey(value) {
     .trim();
 }
 
-function transactionImportKey(item, phases = []) {
-  const phase = phases.find((entry) => Number(entry.id) === Number(item.phaseId));
-  return [
-    normalizedImportKey(phase?.name || ""),
-    normalizedImportKey(item.unit || "Geral"),
-    normalizedImportKey(item.type),
-    normalizedImportKey(item.description),
-    Number(item.quantity || 0).toFixed(2),
-    Number(item.unitValue || 0).toFixed(2),
-    Number(item.total || 0).toFixed(2),
-    String(item.date || "")
-  ].join("|");
-}
-
-function mergeSeedSpreadsheetData(next) {
+function replaceWithSpreadsheetSeed(next) {
   if (normalizedImportKey(next.project?.name) !== normalizedImportKey(seedData.project.name)) return next;
-
-  const phaseByName = new Map(next.phases.map((phase) => [normalizedImportKey(phase.name), phase]));
-  seedData.phases.forEach((seedPhase) => {
-    const key = normalizedImportKey(seedPhase.name);
-    const existing = phaseByName.get(key);
-    if (existing) {
-      existing.budget = Number(seedPhase.budget || existing.budget || 0);
-      existing.start = existing.start || seedPhase.start || "";
-      existing.end = existing.end || seedPhase.end || "";
-      existing.status = existing.status || seedPhase.status || "Em execução";
-      existing.progress = Math.max(Number(existing.progress || 0), Number(seedPhase.progress || 0));
-      return;
-    }
-
-    const phase = { ...seedPhase, id: nextId(next.phases) };
-    next.phases.push(phase);
-    phaseByName.set(key, phase);
-  });
-
-  const catalogKeys = new Set(next.catalog.map((item) =>
-    `${normalizedImportKey(item.type)}|${normalizedImportKey(item.description)}`
-  ));
-  seedData.catalog.forEach((seedItem) => {
-    const key = `${normalizedImportKey(seedItem.type)}|${normalizedImportKey(seedItem.description)}`;
-    if (!catalogKeys.has(key)) {
-      next.catalog.push({ ...seedItem });
-      catalogKeys.add(key);
-    }
-  });
-
-  const transactionKeys = new Set(next.transactions.map((item) => transactionImportKey(item, next.phases)));
-  seedData.transactions.forEach((seedItem) => {
-    const seedPhase = seedData.phases.find((phase) => Number(phase.id) === Number(seedItem.phaseId));
-    const targetPhase = phaseByName.get(normalizedImportKey(seedPhase?.name || ""));
-    const transaction = {
-      ...seedItem,
-      id: nextId(next.transactions),
-      phaseId: targetPhase?.id ?? seedItem.phaseId
-    };
-    const key = transactionImportKey(transaction, next.phases);
-    if (!transactionKeys.has(key)) {
-      next.transactions.push(transaction);
-      transactionKeys.add(key);
-    }
-  });
-
-  return next;
-}
-
-function resetSpreadsheetImport(next) {
-  if (normalizedImportKey(next.project?.name) !== normalizedImportKey(seedData.project.name)) return next;
-
-  const expectedTotal = seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const currentTotal = next.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const empreitaPhase = next.phases.find((phase) => Number(phase.id) === 2);
-  const hasWrongPhaseMap = normalizedImportKey(empreitaPhase?.name) !== "empreiteiros";
-  const hasDifferentSpreadsheetTotals = next.transactions.length !== seedData.transactions.length || Math.abs(currentTotal - expectedTotal) > 0.001;
-  if (!hasWrongPhaseMap && !hasDifferentSpreadsheetTotals) return next;
-
   next.project = { ...seedData.project, ...(next.project || {}) };
   next.units = structuredClone(seedData.units);
   next.phases = structuredClone(seedData.phases);
@@ -2571,8 +2498,7 @@ function migrateState(data) {
     };
   }) : [];
   next.trash = Array.isArray(next.trash) ? next.trash : [];
-  if (previousSchemaVersion < 5) mergeSeedSpreadsheetData(next);
-  if (previousSchemaVersion < 7) resetSpreadsheetImport(next);
+  if (previousSchemaVersion < 8) replaceWithSpreadsheetSeed(next);
   return next;
 }
 

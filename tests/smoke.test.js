@@ -87,13 +87,20 @@ const migrated = evaluate(`({
   schemaVersion: state.schemaVersion,
   count: state.transactions.length,
   expectedCount: seedData.transactions.length,
+  totalsByPhase: state.phases.map((phase) => [
+    phase.name,
+    Number(state.transactions
+      .filter((item) => item.phaseId === phase.id)
+      .reduce((sum, item) => sum + Number(item.total || 0), 0)
+      .toFixed(2))
+  ]),
   firstTotal: state.transactions[0].total,
   firstStatus: state.transactions[0].financialStatus,
   firstMeasure: state.transactions[0].measure,
   empreita6Phase: phaseName(state.transactions.find((item) => item.description === "Empreita 6 parcela")?.phaseId)
 })`);
 if (
-  migrated.schemaVersion !== 7 ||
+  migrated.schemaVersion !== 8 ||
   migrated.count !== migrated.expectedCount ||
   migrated.firstTotal !== 2500 ||
   migrated.firstStatus !== "Pago" ||
@@ -101,6 +108,20 @@ if (
   migrated.empreita6Phase !== "Empreiteiros"
 ) {
   throw new Error("A migração não preservou os dados iniciais.");
+}
+const expectedPhaseTotals = new Map([
+  ["CNPJ + Documentações", 5941.82],
+  ["Empreiteiros", 31900],
+  ["Gabarito", 3192.9],
+  ["Ferramentas", 6475.7],
+  ["Alvenaria + Estrutura", 17907.5],
+  ["Fundação", 22972.21],
+  ["Eletrica", 388.7]
+]);
+for (const [name, total] of migrated.totalsByPhase) {
+  if (Math.abs((expectedPhaseTotals.get(name) ?? -1) - total) > 0.01) {
+    throw new Error(`Total da etapa ${name} não bate com a planilha.`);
+  }
 }
 if (!evaluate(`seedData.transactions.every((item, index) => {
   const migratedItem = state.transactions[index];
@@ -131,7 +152,7 @@ const repairedDuplicateImport = evaluate(`(() => {
 })()`);
 const seedTotal = evaluate("seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0)");
 if (
-  repairedDuplicateImport.schemaVersion !== 7 ||
+  repairedDuplicateImport.schemaVersion !== 8 ||
   repairedDuplicateImport.count !== migrated.expectedCount ||
   Math.abs(repairedDuplicateImport.total - seedTotal) > 0.001
 ) {
