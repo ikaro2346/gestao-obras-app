@@ -1,9 +1,9 @@
-const CACHE_NAME = "gestao-obras-v13";
+const CACHE_NAME = "gestao-obras-v14";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=13",
-  "./app.js?v=13",
+  "./styles.css?v=14",
+  "./app.js?v=14",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png"

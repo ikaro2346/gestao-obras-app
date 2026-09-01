@@ -3,7 +3,7 @@ const BACKUP_KEY = "gestao-obras-backups-v1";
 const DRAFT_KEY = "gestao-obras-lancamento-rascunho-v1";
 const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const seedData = {
   "project": {
@@ -2495,6 +2495,24 @@ function mergeSeedSpreadsheetData(next) {
   return next;
 }
 
+function resetDuplicatedSpreadsheetImport(next) {
+  if (normalizedImportKey(next.project?.name) !== normalizedImportKey(seedData.project.name)) return next;
+  if (next.transactions.length <= seedData.transactions.length) return next;
+
+  const expectedTotal = seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const currentTotal = next.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const appearsDuplicated = next.transactions.length >= seedData.transactions.length + 40 || currentTotal > expectedTotal * 1.25;
+  if (!appearsDuplicated) return next;
+
+  next.project = { ...seedData.project, ...(next.project || {}) };
+  next.units = structuredClone(seedData.units);
+  next.phases = structuredClone(seedData.phases);
+  next.catalog = structuredClone(seedData.catalog);
+  next.transactions = structuredClone(seedData.transactions);
+  next.trash = [];
+  return next;
+}
+
 function migrateState(data) {
   const previousSchemaVersion = Number(data?.schemaVersion || 0);
   const next = structuredClone(data || seedData);
@@ -2551,6 +2569,7 @@ function migrateState(data) {
   }) : [];
   next.trash = Array.isArray(next.trash) ? next.trash : [];
   if (previousSchemaVersion < 5) mergeSeedSpreadsheetData(next);
+  if (previousSchemaVersion < 6) resetDuplicatedSpreadsheetImport(next);
   return next;
 }
 

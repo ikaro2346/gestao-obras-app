@@ -92,7 +92,7 @@ const migrated = evaluate(`({
   firstMeasure: state.transactions[0].measure
 })`);
 if (
-  migrated.schemaVersion !== 5 ||
+  migrated.schemaVersion !== 6 ||
   migrated.count !== migrated.expectedCount ||
   migrated.firstTotal !== 2500 ||
   migrated.firstStatus !== "Pago" ||
@@ -114,6 +114,26 @@ if (!evaluate(`seedData.transactions.every((item, index) => {
     item.notes === migratedItem.notes;
 })`)) {
   throw new Error("A migração alterou o conteúdo de um lançamento existente.");
+}
+
+const repairedDuplicateImport = evaluate(`(() => {
+  const duplicated = structuredClone(seedData);
+  duplicated.schemaVersion = 5;
+  duplicated.transactions = [...structuredClone(seedData.transactions), ...structuredClone(seedData.transactions.slice(0, 54))];
+  const repaired = migrateState(duplicated);
+  return {
+    schemaVersion: repaired.schemaVersion,
+    count: repaired.transactions.length,
+    total: repaired.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0)
+  };
+})()`);
+const seedTotal = evaluate("seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0)");
+if (
+  repairedDuplicateImport.schemaVersion !== 6 ||
+  repairedDuplicateImport.count !== migrated.expectedCount ||
+  Math.abs(repairedDuplicateImport.total - seedTotal) > 0.001
+) {
+  throw new Error("A migração não corrigiu a importação duplicada da planilha.");
 }
 
 const originalTotal = evaluate("state.transactions.reduce((sum, item) => sum + item.total, 0)");
