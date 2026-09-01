@@ -86,13 +86,14 @@ function evaluate(source) {
 const migrated = evaluate(`({
   schemaVersion: state.schemaVersion,
   count: state.transactions.length,
+  expectedCount: seedData.transactions.length,
   firstTotal: state.transactions[0].total,
   firstStatus: state.transactions[0].financialStatus,
   firstMeasure: state.transactions[0].measure
 })`);
 if (
-  migrated.schemaVersion !== 4 ||
-  migrated.count !== 55 ||
+  migrated.schemaVersion !== 5 ||
+  migrated.count !== migrated.expectedCount ||
   migrated.firstTotal !== 2500 ||
   migrated.firstStatus !== "Pago" ||
   migrated.firstMeasure !== "un"
@@ -116,14 +117,15 @@ if (!evaluate(`seedData.transactions.every((item, index) => {
 }
 
 const originalTotal = evaluate("state.transactions.reduce((sum, item) => sum + item.total, 0)");
+const originalCount = evaluate("state.transactions.length");
 evaluate("moveTransactionToTrash(1)");
-if (evaluate("state.transactions.length") !== 54 || evaluate("state.trash.length") !== 1) {
+if (evaluate("state.transactions.length") !== originalCount - 1 || evaluate("state.trash.length") !== 1) {
   throw new Error("A exclusão recuperável falhou.");
 }
 evaluate("restoreTransaction(1)");
 const restoredTotal = evaluate("state.transactions.reduce((sum, item) => sum + item.total, 0)");
 if (
-  evaluate("state.transactions.length") !== 55 ||
+  evaluate("state.transactions.length") !== originalCount ||
   evaluate("state.trash.length") !== 0 ||
   Math.abs(restoredTotal - originalTotal) > 0.001
 ) {
@@ -160,12 +162,12 @@ evaluate(`
 if (
   evaluate("portfolio.projects.length") !== 2 ||
   evaluate("state.transactions.length") !== 0 ||
-  evaluate(`portfolio.projects.find((entry) => entry.id === "${originalProjectId}").data.transactions.length`) !== 55
+  evaluate(`portfolio.projects.find((entry) => entry.id === "${originalProjectId}").data.transactions.length`) !== originalCount
 ) {
   throw new Error("A criação de outra obra alterou os dados da obra existente.");
 }
 evaluate(`switchActiveProject("${originalProjectId}")`);
-if (evaluate("state.transactions.length") !== 55) {
+if (evaluate("state.transactions.length") !== originalCount) {
   throw new Error("A troca de obra não recuperou os dados existentes.");
 }
 
@@ -177,7 +179,7 @@ evaluate(`
 `);
 if (
   evaluate("state.project.name") !== "Casa Germinada" ||
-  evaluate("state.transactions.length") !== 55
+  evaluate("state.transactions.length") !== originalCount
 ) {
   throw new Error("O backup de segurança não restaurou a obra existente.");
 }
