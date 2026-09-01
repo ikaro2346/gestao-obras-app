@@ -139,6 +139,23 @@ if (!evaluate(`seedData.transactions.every((item, index) => {
   throw new Error("A migração alterou o conteúdo de um lançamento existente.");
 }
 
+const fractionalUnitValue = evaluate(`(() => {
+  byId("formPhase").value = "5";
+  byId("formUnit").value = "Geral";
+  byId("formType").value = "Material";
+  byId("formDescription").value = "Pinus 3 m x 0,15 m x 0,2 m";
+  byId("formQuantity").value = "30";
+  byId("formMeasure").value = "un";
+  byId("formValue").value = "17.3333";
+  byId("formDate").value = "2026-08-18";
+  byId("formFinancialStatus").value = "Pago";
+  const item = transactionFromForm(999);
+  return { unitValue: item.unitValue, total: item.total };
+})()`);
+if (fractionalUnitValue.unitValue !== 17.3333 || fractionalUnitValue.total !== 520) {
+  throw new Error("Valor unitário com quatro casas decimais não foi calculado corretamente.");
+}
+
 const repairedDuplicateImport = evaluate(`(() => {
   const duplicated = structuredClone(seedData);
   duplicated.schemaVersion = 5;
