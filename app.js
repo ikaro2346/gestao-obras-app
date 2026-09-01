@@ -3,7 +3,7 @@ const BACKUP_KEY = "gestao-obras-backups-v1";
 const DRAFT_KEY = "gestao-obras-lancamento-rascunho-v1";
 const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const seedData = {
   "project": {
@@ -38,33 +38,6 @@ const seedData = {
   "phases": [
     {
       "id": 1,
-      "name": "Gabarito",
-      "budget": 0.0,
-      "start": "2026-06-01",
-      "end": "2026-06-02",
-      "status": "Em execução",
-      "progress": 0
-    },
-    {
-      "id": 2,
-      "name": "Fundação",
-      "budget": 0.0,
-      "start": "2026-06-02",
-      "end": "",
-      "status": "Em execução",
-      "progress": 0
-    },
-    {
-      "id": 3,
-      "name": "Alvenaria + Estrutura",
-      "budget": 0.0,
-      "start": "",
-      "end": "",
-      "status": "Em execução",
-      "progress": 0
-    },
-    {
-      "id": 4,
       "name": "CNPJ + Documentações",
       "budget": 0.0,
       "start": "",
@@ -73,7 +46,7 @@ const seedData = {
       "progress": 0
     },
     {
-      "id": 5,
+      "id": 2,
       "name": "Empreiteiros",
       "budget": 0.0,
       "start": "",
@@ -82,10 +55,37 @@ const seedData = {
       "progress": 0
     },
     {
-      "id": 6,
+      "id": 3,
+      "name": "Gabarito",
+      "budget": 0.0,
+      "start": "2026-06-01",
+      "end": "2026-06-02",
+      "status": "Em execução",
+      "progress": 0
+    },
+    {
+      "id": 4,
       "name": "Ferramentas",
       "budget": 0.0,
       "start": "",
+      "end": "",
+      "status": "Em execução",
+      "progress": 0
+    },
+    {
+      "id": 5,
+      "name": "Alvenaria + Estrutura",
+      "budget": 0.0,
+      "start": "",
+      "end": "",
+      "status": "Em execução",
+      "progress": 0
+    },
+    {
+      "id": 6,
+      "name": "Fundação",
+      "budget": 0.0,
+      "start": "2026-06-02",
       "end": "",
       "status": "Em execução",
       "progress": 0
@@ -2497,14 +2497,15 @@ function mergeSeedSpreadsheetData(next) {
   return next;
 }
 
-function resetDuplicatedSpreadsheetImport(next) {
+function resetSpreadsheetImport(next) {
   if (normalizedImportKey(next.project?.name) !== normalizedImportKey(seedData.project.name)) return next;
-  if (next.transactions.length <= seedData.transactions.length) return next;
 
   const expectedTotal = seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
   const currentTotal = next.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const appearsDuplicated = next.transactions.length >= seedData.transactions.length + 40 || currentTotal > expectedTotal * 1.25;
-  if (!appearsDuplicated) return next;
+  const empreitaPhase = next.phases.find((phase) => Number(phase.id) === 2);
+  const hasWrongPhaseMap = normalizedImportKey(empreitaPhase?.name) !== "empreiteiros";
+  const hasDifferentSpreadsheetTotals = next.transactions.length !== seedData.transactions.length || Math.abs(currentTotal - expectedTotal) > 0.001;
+  if (!hasWrongPhaseMap && !hasDifferentSpreadsheetTotals) return next;
 
   next.project = { ...seedData.project, ...(next.project || {}) };
   next.units = structuredClone(seedData.units);
@@ -2571,7 +2572,7 @@ function migrateState(data) {
   }) : [];
   next.trash = Array.isArray(next.trash) ? next.trash : [];
   if (previousSchemaVersion < 5) mergeSeedSpreadsheetData(next);
-  if (previousSchemaVersion < 6) resetDuplicatedSpreadsheetImport(next);
+  if (previousSchemaVersion < 7) resetSpreadsheetImport(next);
   return next;
 }
 

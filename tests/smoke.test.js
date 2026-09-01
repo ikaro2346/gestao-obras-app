@@ -89,14 +89,16 @@ const migrated = evaluate(`({
   expectedCount: seedData.transactions.length,
   firstTotal: state.transactions[0].total,
   firstStatus: state.transactions[0].financialStatus,
-  firstMeasure: state.transactions[0].measure
+  firstMeasure: state.transactions[0].measure,
+  empreita6Phase: phaseName(state.transactions.find((item) => item.description === "Empreita 6 parcela")?.phaseId)
 })`);
 if (
-  migrated.schemaVersion !== 6 ||
+  migrated.schemaVersion !== 7 ||
   migrated.count !== migrated.expectedCount ||
   migrated.firstTotal !== 2500 ||
   migrated.firstStatus !== "Pago" ||
-  migrated.firstMeasure !== "un"
+  migrated.firstMeasure !== "un" ||
+  migrated.empreita6Phase !== "Empreiteiros"
 ) {
   throw new Error("A migração não preservou os dados iniciais.");
 }
@@ -129,11 +131,31 @@ const repairedDuplicateImport = evaluate(`(() => {
 })()`);
 const seedTotal = evaluate("seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0)");
 if (
-  repairedDuplicateImport.schemaVersion !== 6 ||
+  repairedDuplicateImport.schemaVersion !== 7 ||
   repairedDuplicateImport.count !== migrated.expectedCount ||
   Math.abs(repairedDuplicateImport.total - seedTotal) > 0.001
 ) {
   throw new Error("A migração não corrigiu a importação duplicada da planilha.");
+}
+
+const repairedWrongPhaseMap = evaluate(`(() => {
+  const wrong = structuredClone(seedData);
+  wrong.schemaVersion = 6;
+  wrong.phases = [
+    { id: 1, name: "Gabarito", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 2, name: "Fundação", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 3, name: "Alvenaria + Estrutura", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 4, name: "CNPJ + Documentações", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 5, name: "Empreiteiros", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 6, name: "Ferramentas", budget: 0, start: "", end: "", status: "Em execução", progress: 0 },
+    { id: 7, name: "Eletrica", budget: 0, start: "", end: "", status: "Em execução", progress: 0 }
+  ];
+  const repaired = migrateState(wrong);
+  const transaction = repaired.transactions.find((item) => item.description === "Empreita 6 parcela");
+  return repaired.phases.find((phase) => phase.id === transaction?.phaseId)?.name;
+})()`);
+if (repairedWrongPhaseMap !== "Empreiteiros") {
+  throw new Error("A migração não corrigiu o vínculo da etapa Empreiteiros.");
 }
 
 const originalTotal = evaluate("state.transactions.reduce((sum, item) => sum + item.total, 0)");
