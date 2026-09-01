@@ -5,6 +5,7 @@ const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
 const ONLINE_CONFIG_KEY = "gestao-obras-online-v1";
 const ONLINE_TABLE = "app_states";
+const ONLINE_POLL_INTERVAL_MS = 10000;
 const DEFAULT_ONLINE_CONFIG = {
   supabaseUrl: "https://jcfmrbyqwlxcuvhbpeot.supabase.co",
   anonKey: "sb_publishable_Jayqsmez-_CEwoXsgg-dSg_PENYO0l-",
@@ -2338,6 +2339,7 @@ let onlineConfig = loadOnlineConfig();
 let onlineClient = null;
 let onlineChannel = null;
 let onlineSaveTimer = null;
+let onlinePollTimer = null;
 let applyingOnlineState = false;
 let lastOnlineUpdatedAt = "";
 
@@ -2632,6 +2634,7 @@ async function connectOnlineSync() {
     onlineClient?.removeChannel?.(onlineChannel);
     onlineChannel = null;
   }
+  stopOnlinePolling();
 
   onlineClient = window.supabase.createClient(onlineConfig.supabaseUrl, onlineConfig.anonKey);
   setOnlineStatus("Conectando", "is-warning");
@@ -2666,10 +2669,35 @@ async function connectOnlineSync() {
         const online = status === "SUBSCRIBED";
         setOnlineStatus(online ? "Online" : "Conectando", online ? "is-online" : "is-warning");
       });
+    startOnlinePolling();
   } catch (error) {
     setOnlineStatus("Erro online", "is-error");
     alert(`Não foi possível conectar no Supabase.\n${error.message || error}`);
   }
+}
+
+function startOnlinePolling() {
+  stopOnlinePolling();
+  onlinePollTimer = setInterval(() => {
+    refreshOnlineState().catch(() => setOnlineStatus("Falha ao atualizar", "is-error"));
+  }, ONLINE_POLL_INTERVAL_MS);
+}
+
+function stopOnlinePolling() {
+  if (!onlinePollTimer) return;
+  clearInterval(onlinePollTimer);
+  onlinePollTimer = null;
+}
+
+async function refreshOnlineState() {
+  if (!onlineClient || !hasOnlineConfig()) return;
+  const { data, error } = await onlineClient
+    .from(ONLINE_TABLE)
+    .select("data, updated_at")
+    .eq("project_key", onlineConfig.projectKey)
+    .maybeSingle();
+  if (error) throw error;
+  applyOnlinePayload(data);
 }
 
 function applyOnlinePayload(row) {
