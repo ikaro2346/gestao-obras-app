@@ -5,7 +5,7 @@ const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
 const ONLINE_CONFIG_KEY = "gestao-obras-online-v1";
 const ONLINE_TABLE = "app_states";
-const ONLINE_POLL_INTERVAL_MS = 10000;
+const ONLINE_POLL_INTERVAL_MS = 5000;
 const DEFAULT_ONLINE_CONFIG = {
   supabaseUrl: "https://jcfmrbyqwlxcuvhbpeot.supabase.co",
   anonKey: "sb_publishable_Jayqsmez-_CEwoXsgg-dSg_PENYO0l-",
@@ -2679,7 +2679,7 @@ async function connectOnlineSync() {
 function startOnlinePolling() {
   stopOnlinePolling();
   onlinePollTimer = setInterval(() => {
-    refreshOnlineState().catch(() => setOnlineStatus("Falha ao atualizar", "is-error"));
+    requestOnlineRefresh();
   }, ONLINE_POLL_INTERVAL_MS);
 }
 
@@ -2698,6 +2698,20 @@ async function refreshOnlineState() {
     .maybeSingle();
   if (error) throw error;
   applyOnlinePayload(data);
+}
+
+function requestOnlineRefresh() {
+  if (!onlineClient || !hasOnlineConfig()) return;
+  refreshOnlineState().catch(() => setOnlineStatus("Falha ao atualizar", "is-error"));
+}
+
+function wireOnlineRefreshEvents() {
+  ["focus", "online"].forEach((eventName) => {
+    window.addEventListener(eventName, requestOnlineRefresh);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) requestOnlineRefresh();
+  });
 }
 
 function applyOnlinePayload(row) {
@@ -4852,6 +4866,7 @@ byId("formDate").value = todayIso();
 renderAll();
 restoreTransactionDraft();
 wireEvents();
+wireOnlineRefreshEvents();
 registerPwa();
 connectOnlineSync();
 setInterval(refreshWorkModeDate, 60000);
