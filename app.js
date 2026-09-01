@@ -5,6 +5,11 @@ const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
 const ONLINE_CONFIG_KEY = "gestao-obras-online-v1";
 const ONLINE_TABLE = "app_states";
+const DEFAULT_ONLINE_CONFIG = {
+  supabaseUrl: "https://jcfmrbyqwlxcuvhbpeot.supabase.co",
+  anonKey: "sb_publishable_Jayqsmez-_CEwoXsgg-dSg_PENYO0l-",
+  projectKey: "casa-germinada"
+};
 const SCHEMA_VERSION = 8;
 
 const seedData = {
@@ -2564,20 +2569,20 @@ function loadOnlineConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(ONLINE_CONFIG_KEY) || "null");
     return {
-      supabaseUrl: String(saved?.supabaseUrl || "").trim(),
+      supabaseUrl: String(saved?.supabaseUrl || DEFAULT_ONLINE_CONFIG.supabaseUrl).trim(),
       anonKey: String(saved?.anonKey || "").trim(),
-      projectKey: String(saved?.projectKey || "casa-germinada").trim() || "casa-germinada"
+      projectKey: String(saved?.projectKey || DEFAULT_ONLINE_CONFIG.projectKey).trim() || DEFAULT_ONLINE_CONFIG.projectKey
     };
   } catch {
-    return { supabaseUrl: "", anonKey: "", projectKey: "casa-germinada" };
+    return { ...DEFAULT_ONLINE_CONFIG };
   }
 }
 
 function saveOnlineConfig(config) {
   onlineConfig = {
-    supabaseUrl: String(config.supabaseUrl || "").trim(),
+    supabaseUrl: String(config.supabaseUrl || DEFAULT_ONLINE_CONFIG.supabaseUrl).trim(),
     anonKey: String(config.anonKey || "").trim(),
-    projectKey: String(config.projectKey || "casa-germinada").trim() || "casa-germinada"
+    projectKey: String(config.projectKey || DEFAULT_ONLINE_CONFIG.projectKey).trim() || DEFAULT_ONLINE_CONFIG.projectKey
   };
   localStorage.setItem(ONLINE_CONFIG_KEY, JSON.stringify(onlineConfig));
 }
