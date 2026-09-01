@@ -3,6 +3,8 @@ const BACKUP_KEY = "gestao-obras-backups-v1";
 const DRAFT_KEY = "gestao-obras-lancamento-rascunho-v1";
 const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
+const ONLINE_CONFIG_KEY = "gestao-obras-online-v1";
+const ONLINE_TABLE = "app_states";
 const SCHEMA_VERSION = 8;
 
 const seedData = {
@@ -2327,6 +2329,12 @@ let undoTimer = null;
 let deferredInstallPrompt = null;
 let waitingServiceWorker = null;
 let refreshingApp = false;
+let onlineConfig = loadOnlineConfig();
+let onlineClient = null;
+let onlineChannel = null;
+let onlineSaveTimer = null;
+let applyingOnlineState = false;
+let lastOnlineUpdatedAt = "";
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" });
@@ -2362,6 +2370,7 @@ function saveState() {
       localStorage.setItem(PORTFOLIO_KEY, JSON.stringify(portfolio));
     }
     saveAutomaticBackup();
+    queueOnlineSave();
   } catch {
     alert("Não foi possível salvar os dados neste navegador. Exporte um backup JSON antes de continuar.");
   }
@@ -2549,6 +2558,145 @@ function loadPortfolioSafetyBackup() {
 
 function byId(id) {
   return document.getElementById(id);
+}
+
+function loadOnlineConfig() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ONLINE_CONFIG_KEY) || "null");
+    return {
+      supabaseUrl: String(saved?.supabaseUrl || "").trim(),
+      anonKey: String(saved?.anonKey || "").trim(),
+      projectKey: String(saved?.projectKey || "casa-germinada").trim() || "casa-germinada"
+    };
+  } catch {
+    return { supabaseUrl: "", anonKey: "", projectKey: "casa-germinada" };
+  }
+}
+
+function saveOnlineConfig(config) {
+  onlineConfig = {
+    supabaseUrl: String(config.supabaseUrl || "").trim(),
+    anonKey: String(config.anonKey || "").trim(),
+    projectKey: String(config.projectKey || "casa-germinada").trim() || "casa-germinada"
+  };
+  localStorage.setItem(ONLINE_CONFIG_KEY, JSON.stringify(onlineConfig));
+}
+
+function hasOnlineConfig() {
+  return Boolean(onlineConfig.supabaseUrl && onlineConfig.anonKey && onlineConfig.projectKey);
+}
+
+function setOnlineStatus(text, mode = "") {
+  const badge = byId("onlineStatus");
+  if (!badge) return;
+  badge.textContent = text;
+  badge.classList.remove("is-online", "is-warning", "is-error");
+  if (mode) badge.classList.add(mode);
+}
+
+function getDeviceId() {
+  const key = "gestao-obras-device-id";
+  let id = localStorage.getItem(key);
+  if (!id) {
+    id = createLocalId("dispositivo");
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function onlinePayload() {
+  return {
+    project_key: onlineConfig.projectKey,
+    data: state,
+    updated_at: new Date().toISOString(),
+    device_id: getDeviceId()
+  };
+}
+
+async function connectOnlineSync() {
+  if (!hasOnlineConfig()) {
+    setOnlineStatus("Local");
+    return;
+  }
+  if (!window.supabase?.createClient) {
+    setOnlineStatus("Sem conexão", "is-error");
+    return;
+  }
+
+  if (onlineChannel) {
+    onlineClient?.removeChannel?.(onlineChannel);
+    onlineChannel = null;
+  }
+
+  onlineClient = window.supabase.createClient(onlineConfig.supabaseUrl, onlineConfig.anonKey);
+  setOnlineStatus("Conectando", "is-warning");
+
+  try {
+    const { data, error } = await onlineClient
+      .from(ONLINE_TABLE)
+      .select("data, updated_at")
+      .eq("project_key", onlineConfig.projectKey)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data?.data) {
+      lastOnlineUpdatedAt = data.updated_at || "";
+      applyingOnlineState = true;
+      state = migrateState(data.data);
+      saveState();
+      applyingOnlineState = false;
+      renderAll();
+    } else {
+      await saveOnlineStateNow();
+    }
+
+    onlineChannel = onlineClient.channel(`obra:${onlineConfig.projectKey}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: ONLINE_TABLE,
+        filter: `project_key=eq.${onlineConfig.projectKey}`
+      }, (payload) => applyOnlinePayload(payload.new))
+      .subscribe((status) => {
+        const online = status === "SUBSCRIBED";
+        setOnlineStatus(online ? "Online" : "Conectando", online ? "is-online" : "is-warning");
+      });
+  } catch (error) {
+    setOnlineStatus("Erro online", "is-error");
+    alert(`Não foi possível conectar no Supabase.\n${error.message || error}`);
+  }
+}
+
+function applyOnlinePayload(row) {
+  if (!row?.data || row.updated_at === lastOnlineUpdatedAt) return;
+  lastOnlineUpdatedAt = row.updated_at || "";
+  applyingOnlineState = true;
+  state = migrateState(row.data);
+  saveState();
+  applyingOnlineState = false;
+  renderAll();
+  setOnlineStatus("Online", "is-online");
+}
+
+function queueOnlineSave() {
+  if (applyingOnlineState || !onlineClient || !hasOnlineConfig()) return;
+  clearTimeout(onlineSaveTimer);
+  onlineSaveTimer = setTimeout(() => {
+    saveOnlineStateNow().catch(() => setOnlineStatus("Falha ao salvar", "is-error"));
+  }, 500);
+}
+
+async function saveOnlineStateNow() {
+  if (!onlineClient || !hasOnlineConfig()) return;
+  const payload = onlinePayload();
+  const { data, error } = await onlineClient
+    .from(ONLINE_TABLE)
+    .upsert(payload, { onConflict: "project_key" })
+    .select("updated_at")
+    .single();
+  if (error) throw error;
+  lastOnlineUpdatedAt = data?.updated_at || payload.updated_at;
+  setOnlineStatus("Online", "is-online");
 }
 
 function escapeHtml(value) {
@@ -4086,6 +4234,9 @@ function openSettingsDialog() {
   byId("settingsAddress").value = project.address || "";
   byId("settingsCity").value = project.city || "";
   byId("settingsAllocation").value = project.allocationMethod || "equal";
+  byId("onlineSupabaseUrl").value = onlineConfig.supabaseUrl || "";
+  byId("onlineSupabaseAnonKey").value = onlineConfig.anonKey || "";
+  byId("onlineProjectKey").value = onlineConfig.projectKey || "casa-germinada";
   byId("restoreSafetyBackup").hidden = !safetyBackup;
   byId("restoreSafetyBackup").title = safetyBackup
     ? `Cópia criada em ${new Date(safetyBackup.createdAt).toLocaleString("pt-BR")}`
@@ -4574,9 +4725,24 @@ function wireEvents() {
       city: byId("settingsCity").value.trim(),
       allocationMethod: byId("settingsAllocation").value
     };
+    saveOnlineConfig({
+      supabaseUrl: byId("onlineSupabaseUrl").value,
+      anonKey: byId("onlineSupabaseAnonKey").value,
+      projectKey: byId("onlineProjectKey").value
+    });
     saveState();
     byId("settingsDialog").close();
     renderAll();
+    connectOnlineSync();
+  });
+  byId("syncNow").addEventListener("click", async () => {
+    saveOnlineConfig({
+      supabaseUrl: byId("onlineSupabaseUrl").value,
+      anonKey: byId("onlineSupabaseAnonKey").value,
+      projectKey: byId("onlineProjectKey").value
+    });
+    await connectOnlineSync();
+    await saveOnlineStateNow();
   });
   byId("exportPortfolio").addEventListener("click", () => {
     saveState();
@@ -4654,4 +4820,5 @@ renderAll();
 restoreTransactionDraft();
 wireEvents();
 registerPwa();
+connectOnlineSync();
 setInterval(refreshWorkModeDate, 60000);

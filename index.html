@@ -8,7 +8,8 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=19">
+    <link rel="stylesheet" href="./styles.css?v=20">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <header class="app-header">
@@ -22,6 +23,7 @@
         <button id="newProject" class="ghost-button" type="button">Nova obra</button>
         <button id="installApp" class="ghost-button" type="button" hidden>Instalar</button>
         <button id="refreshApp" class="ghost-button update-button" type="button" hidden>Atualizar app</button>
+        <span id="onlineStatus" class="sync-status" title="Sincronização online">Local</span>
         <button id="openSettings" class="ghost-button" type="button">Configurar</button>
         <button id="printReport" class="icon-button" type="button" aria-label="Gerar relatório em PDF">PDF</button>
       </div>
@@ -469,6 +471,24 @@
         </label>
         <button id="restoreSafetyBackup" class="ghost-button full" type="button" hidden>Restaurar backup anterior</button>
         <details class="settings-backup-actions">
+          <summary>Sincronização online</summary>
+          <div class="settings-backup-grid">
+            <label>
+              URL do Supabase
+              <input id="onlineSupabaseUrl" type="url" placeholder="https://seu-projeto.supabase.co">
+            </label>
+            <label>
+              Chave pública anon
+              <input id="onlineSupabaseAnonKey" autocomplete="off" placeholder="eyJhbGciOi...">
+            </label>
+            <label>
+              Identificação da obra online
+              <input id="onlineProjectKey" autocomplete="off" placeholder="casa-germinada">
+            </label>
+            <button id="syncNow" class="ghost-button full" type="button">Sincronizar agora</button>
+          </div>
+        </details>
+        <details class="settings-backup-actions">
           <summary>Backup e importação</summary>
           <div class="settings-backup-grid">
             <button id="exportJson" class="ghost-button full" type="button">Exportar obra atual</button>
@@ -659,6 +679,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=19"></script>
+    <script src="./app.js?v=20"></script>
   </body>
 </html>

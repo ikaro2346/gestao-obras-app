@@ -16,7 +16,36 @@ O arquivo `supabase-schema.sql` contém:
 - regras de acesso por obra;
 - valores monetários em centavos.
 
-## Etapas Para Ativação
+## Ativação Simples Do App Atual
+
+Para o app já funcionar com duas pessoas editando a mesma obra, use o arquivo
+`supabase-online-sync.sql`.
+
+1. Criar um projeto em https://supabase.com.
+2. Entrar em **SQL Editor**.
+3. Colar e executar o conteúdo de `docs/supabase-online-sync.sql`.
+4. Entrar em **Project Settings > API**.
+5. Copiar a **Project URL**.
+6. Copiar a chave pública **anon public**.
+7. Abrir o app Gestão de Obras.
+8. Ir em **Configurar > Sincronização online**.
+9. Colar a URL, a chave `anon` e deixar a obra como `casa-germinada`.
+10. Clicar em **Sincronizar agora**.
+
+Depois disso, quando uma pessoa lançar, editar ou excluir, a outra recebe a
+alteração online.
+
+Importante: essa ativação simples não tem login. Ela é prática para você e seu
+colega começarem, mas quem tiver a URL e a chave do Supabase consegue alterar a
+base. Para virar produto para clientes, use a estrutura completa abaixo com
+login e membros por obra.
+
+## Estrutura Completa Para Produto
+
+O arquivo `supabase-schema.sql` contém a modelagem para uma versão com login,
+membros, papéis e anexos.
+
+## Etapas Para Ativação Completa
 
 1. Criar um projeto no Supabase.
 2. Executar `supabase-schema.sql` no SQL Editor.

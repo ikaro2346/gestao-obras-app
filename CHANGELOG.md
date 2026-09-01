@@ -9,6 +9,7 @@
 - fix: corrige o vínculo de etapas dos lançamentos importados da planilha.
 - fix: sincroniza lançamentos exatamente pela Planilha11 e confere totais por etapa com a Planilha9.
 - fix: permite valor unitário com quatro casas decimais nos lançamentos.
+- feat: adiciona sincronização online em tempo real via Supabase.
 - feat: simplifica o lançamento diário e adiciona rascunho, favoritos e alerta de duplicidade.
 - feat: adiciona situação financeira, vencimentos, filtros avançados e contas a pagar.
 - feat: adiciona lixeira recuperável, backup automático, restauração antes de importações e rateio por área.

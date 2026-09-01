@@ -1,6 +1,6 @@
 # Gestão de Obras
 
-Aplicativo web para controle financeiro e operacional de obras residenciais, criado a partir de uma planilha de gestão de obra. A versão atual é um protótipo local, mobile-first, com dados salvos no navegador.
+Aplicativo web para controle financeiro e operacional de obras residenciais, criado a partir de uma planilha de gestão de obra. A versão atual funciona localmente no navegador e pode sincronizar online via Supabase.
 
 ## O Que Já Tem
 
@@ -22,6 +22,7 @@ Aplicativo web para controle financeiro e operacional de obras residenciais, cri
 - Backup automático diário no navegador.
 - Cópia de segurança restaurável antes de cada importação.
 - Instalação como PWA e abertura offline pelo endereço publicado.
+- Sincronização online em tempo real via Supabase quando configurada.
 - Layout responsivo para celular e computador.
 
 ## Como Abrir
@@ -53,13 +54,19 @@ node tests/smoke.test.js
 
 ## Colaboração Online
 
-A estrutura de banco e as regras de acesso estão preparadas em:
+A sincronização simples em tempo real usa:
 
-- `docs/supabase-schema.sql`
+- `docs/supabase-online-sync.sql`
 - `docs/supabase-setup.md`
 
-A ativação depende de um projeto Supabase real e deve começar por um backup JSON
-dos dados atuais.
+Depois de criar o projeto no Supabase, cole a Project URL e a chave pública
+`anon` em `Configurar > Sincronização online` dentro do app.
+
+A estrutura completa com login e regras por membro também está preparada em:
+
+- `docs/supabase-schema.sql`
+
+Antes de ativar online, faça um backup JSON dos dados atuais.
 
 ## Fluxo Com GitHub
 

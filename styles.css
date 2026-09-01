@@ -131,6 +131,37 @@ button {
   color: #7c2d12;
 }
 
+.sync-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, .34);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.sync-status.is-online {
+  background: #dcfce7;
+  border-color: #bbf7d0;
+  color: #14532d;
+}
+
+.sync-status.is-warning {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #7c2d12;
+}
+
+.sync-status.is-error {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #7f1d1d;
+}
+
 .full {
   width: 100%;
 }
