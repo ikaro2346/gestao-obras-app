@@ -2325,6 +2325,8 @@ let editingTransactionId = null;
 let lastDeletedTransactionId = null;
 let undoTimer = null;
 let deferredInstallPrompt = null;
+let waitingServiceWorker = null;
+let refreshingApp = false;
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const dateFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" });
@@ -4297,7 +4299,40 @@ function restoreTransaction(id) {
 function registerPwa() {
   if (typeof navigator === "undefined" || typeof window === "undefined") return;
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("./service-worker.js")
+      .then((registration) => {
+        registration.update().catch(() => {});
+
+        if (registration.waiting) {
+          waitingServiceWorker = registration.waiting;
+          byId("refreshApp").hidden = false;
+        }
+
+        registration.addEventListener("updatefound", () => {
+          const worker = registration.installing;
+          if (!worker) return;
+          worker.addEventListener("statechange", () => {
+            if (worker.state === "installed" && navigator.serviceWorker.controller) {
+              waitingServiceWorker = worker;
+              byId("refreshApp").hidden = false;
+            }
+          });
+        });
+
+        ["focus", "online"].forEach((eventName) => {
+          window.addEventListener(eventName, () => registration.update().catch(() => {}));
+        });
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) registration.update().catch(() => {});
+        });
+      })
+      .catch(() => {});
+
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshingApp) return;
+      refreshingApp = true;
+      window.location.reload();
+    });
   }
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
@@ -4644,6 +4679,14 @@ function wireEvents() {
     await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
     byId("installApp").hidden = true;
+  });
+
+  byId("refreshApp").addEventListener("click", () => {
+    if (waitingServiceWorker) {
+      waitingServiceWorker.postMessage({ type: "SKIP_WAITING" });
+      return;
+    }
+    window.location.reload();
   });
 
   byId("exportJson").addEventListener("click", () => {

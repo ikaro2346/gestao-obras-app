@@ -1,9 +1,9 @@
-const CACHE_NAME = "gestao-obras-v14";
+const CACHE_NAME = "gestao-obras-v15";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=14",
-  "./app.js?v=14",
+  "./styles.css?v=15",
+  "./app.js?v=15",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png"
@@ -23,6 +23,12 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

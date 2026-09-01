@@ -125,6 +125,12 @@ button {
   color: #fff;
 }
 
+.app-header .update-button {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #7c2d12;
+}
+
 .full {
   width: 100%;
 }

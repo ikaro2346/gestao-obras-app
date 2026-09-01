@@ -4,6 +4,7 @@
 
 - feat: atualiza a base inicial pela planilha da obra com 94 lancamentos e migracao sem duplicar dados locais.
 - fix: corrige migracao duplicada dos lancamentos importados da planilha.
+- feat: melhora instalacao como app e atualizacao online via GitHub Pages.
 - feat: simplifica o lançamento diário e adiciona rascunho, favoritos e alerta de duplicidade.
 - feat: adiciona situação financeira, vencimentos, filtros avançados e contas a pagar.
 - feat: adiciona lixeira recuperável, backup automático, restauração antes de importações e rateio por área.
