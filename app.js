@@ -4298,6 +4298,11 @@ function restoreTransaction(id) {
 
 function registerPwa() {
   if (typeof navigator === "undefined" || typeof window === "undefined") return;
+  const installButton = byId("installApp");
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  if (!isStandalone && location.protocol !== "file:") {
+    installButton.hidden = false;
+  }
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
     navigator.serviceWorker.register("./service-worker.js")
       .then((registration) => {
@@ -4337,8 +4342,16 @@ function registerPwa() {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
-    byId("installApp").hidden = false;
+    installButton.hidden = false;
   });
+}
+
+function showInstallHelp() {
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  const message = isMobile
+    ? "Para instalar no celular:\n\n1. Abra este site no Chrome.\n2. Toque nos três pontinhos do navegador.\n3. Escolha \"Adicionar à tela inicial\" ou \"Instalar app\"."
+    : "Para instalar no computador:\n\n1. Abra este site no Chrome ou Edge.\n2. Clique no ícone de instalação na barra de endereço.\n3. Se não aparecer, abra o menu de três pontinhos e escolha \"Salvar e compartilhar\" > \"Instalar página como app\".";
+  alert(message);
 }
 
 function wireEvents() {
@@ -4674,7 +4687,10 @@ function wireEvents() {
   });
 
   byId("installApp").addEventListener("click", async () => {
-    if (!deferredInstallPrompt) return;
+    if (!deferredInstallPrompt) {
+      showInstallHelp();
+      return;
+    }
     deferredInstallPrompt.prompt();
     await deferredInstallPrompt.userChoice;
     deferredInstallPrompt = null;
