@@ -2649,11 +2649,15 @@ async function connectOnlineSync() {
     if (error) throw error;
     if (data?.data) {
       lastOnlineUpdatedAt = data.updated_at || "";
+      const remoteState = migrateState(data.data);
+      const mergedState = mergeOnlineState(state, remoteState);
+      const shouldPublishMerge = JSON.stringify(mergedState) !== JSON.stringify(remoteState);
       applyingOnlineState = true;
-      state = migrateState(data.data);
+      state = mergedState;
       saveState();
       applyingOnlineState = false;
       renderAll();
+      if (shouldPublishMerge) await saveOnlineStateNow();
     } else {
       await saveOnlineStateNow();
     }
@@ -2706,23 +2710,59 @@ function requestOnlineRefresh() {
 }
 
 function wireOnlineRefreshEvents() {
+  if (typeof window.addEventListener !== "function") return;
   ["focus", "online"].forEach((eventName) => {
     window.addEventListener(eventName, requestOnlineRefresh);
   });
+  if (typeof document.addEventListener !== "function") return;
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) requestOnlineRefresh();
+  });
+}
+
+function mergeById(localItems = [], remoteItems = []) {
+  const merged = new Map();
+  localItems.forEach((item) => merged.set(Number(item.id), item));
+  remoteItems.forEach((item) => merged.set(Number(item.id), item));
+  return Array.from(merged.values()).sort((a, b) => Number(a.id) - Number(b.id));
+}
+
+function mergeCatalogItems(localItems = [], remoteItems = []) {
+  const merged = new Map();
+  localItems.forEach((item) => merged.set(normalizedImportKey(item.description), item));
+  remoteItems.forEach((item) => merged.set(normalizedImportKey(item.description), item));
+  return Array.from(merged.values()).sort((a, b) => a.description.localeCompare(b.description, "pt-BR"));
+}
+
+function mergeOnlineState(localState, remoteState) {
+  const local = migrateState(localState);
+  const remote = migrateState(remoteState);
+  return migrateState({
+    ...remote,
+    project: { ...remote.project, ...local.project },
+    units: mergeById(local.units, remote.units),
+    phases: mergeById(local.phases, remote.phases),
+    catalog: mergeCatalogItems(local.catalog, remote.catalog),
+    transactions: mergeById(local.transactions, remote.transactions),
+    trash: mergeById(local.trash, remote.trash)
   });
 }
 
 function applyOnlinePayload(row) {
   if (!row?.data || row.updated_at === lastOnlineUpdatedAt) return;
   lastOnlineUpdatedAt = row.updated_at || "";
+  const remoteState = migrateState(row.data);
+  const mergedState = mergeOnlineState(state, remoteState);
+  const shouldPublishMerge = JSON.stringify(mergedState) !== JSON.stringify(remoteState);
   applyingOnlineState = true;
-  state = migrateState(row.data);
+  state = mergedState;
   saveState();
   applyingOnlineState = false;
   renderAll();
   setOnlineStatus("Online", "is-online");
+  if (shouldPublishMerge) {
+    saveOnlineStateNow().catch(() => setOnlineStatus("Falha ao salvar", "is-error"));
+  }
 }
 
 function queueOnlineSave() {
@@ -3473,6 +3513,11 @@ function formatDate(value) {
 
 function nextId(collection) {
   return Math.max(0, ...collection.map((item) => Number(item.id))) + 1;
+}
+
+function nextTransactionId() {
+  const timeId = (Date.now() * 1000) + Math.floor(Math.random() * 1000);
+  return Math.max(nextId(state.transactions), timeId);
 }
 
 function download(filename, content, type) {
@@ -4577,7 +4622,7 @@ function wireEvents() {
 
   byId("transactionForm").addEventListener("submit", (event) => {
     event.preventDefault();
-    const item = transactionFromForm(editingTransactionId || nextId(state.transactions));
+    const item = transactionFromForm(editingTransactionId || nextTransactionId());
     const duplicate = findPossibleDuplicate(item);
     if (duplicate) {
       const confirmed = confirm(`Já existe um lançamento parecido em ${formatDate(duplicate.date)}, no valor de ${money.format(duplicate.total)}.\nDeseja salvar mesmo assim?`);
