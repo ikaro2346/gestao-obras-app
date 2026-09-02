@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix: reduz consultas e renderizacoes repetidas da sincronizacao online para melhorar desempenho.
 - fix: usa a chave publica padrao do Supabase quando a sincronizacao online esta vazia ou com placeholder.
 - feat: atualiza a base inicial pela planilha da obra com 94 lancamentos e migracao sem duplicar dados locais.
 - fix: corrige migracao duplicada dos lancamentos importados da planilha.

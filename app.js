@@ -5,7 +5,7 @@ const PORTFOLIO_KEY = "gestao-obras-portfolio-v1";
 const SAFETY_BACKUP_KEY = "gestao-obras-backup-seguranca-v1";
 const ONLINE_CONFIG_KEY = "gestao-obras-online-v1";
 const ONLINE_TABLE = "app_states";
-const ONLINE_POLL_INTERVAL_MS = 5000;
+const ONLINE_POLL_INTERVAL_MS = 20000;
 const DEFAULT_ONLINE_CONFIG = {
   supabaseUrl: "https://jcfmrbyqwlxcuvhbpeot.supabase.co",
   anonKey: "sb_publishable_Jayqsmez-_CEwoXsgg-dSg_PENYO0l-",
@@ -2659,6 +2659,10 @@ function onlinePayload() {
   };
 }
 
+function stateFingerprint(value) {
+  return JSON.stringify(migrateState(value));
+}
+
 async function connectOnlineSync() {
   if (!hasOnlineConfig()) {
     setOnlineStatus("Local");
@@ -2690,12 +2694,15 @@ async function connectOnlineSync() {
       lastOnlineUpdatedAt = data.updated_at || "";
       const remoteState = migrateState(data.data);
       const mergedState = mergeOnlineState(state, remoteState);
+      const changedState = stateFingerprint(mergedState) !== stateFingerprint(state);
       const shouldPublishMerge = JSON.stringify(mergedState) !== JSON.stringify(remoteState);
-      applyingOnlineState = true;
-      state = mergedState;
-      saveState();
-      applyingOnlineState = false;
-      renderAll();
+      if (changedState) {
+        applyingOnlineState = true;
+        state = mergedState;
+        saveState();
+        applyingOnlineState = false;
+        renderAll();
+      }
       if (shouldPublishMerge) await saveOnlineStateNow();
     } else {
       await saveOnlineStateNow();
@@ -2735,6 +2742,17 @@ function stopOnlinePolling() {
 
 async function refreshOnlineState() {
   if (!onlineClient || !hasOnlineConfig()) return;
+  const { data: statusData, error: statusError } = await onlineClient
+    .from(ONLINE_TABLE)
+    .select("updated_at")
+    .eq("project_key", onlineConfig.projectKey)
+    .maybeSingle();
+  if (statusError) throw statusError;
+  if (!statusData?.updated_at || statusData.updated_at === lastOnlineUpdatedAt) {
+    setOnlineStatus("Online", "is-online");
+    return;
+  }
+
   const { data, error } = await onlineClient
     .from(ONLINE_TABLE)
     .select("data, updated_at")
@@ -2793,12 +2811,15 @@ function applyOnlinePayload(row) {
   lastOnlineUpdatedAt = row.updated_at || "";
   const remoteState = migrateState(row.data);
   const mergedState = mergeOnlineState(state, remoteState);
+  const changedState = stateFingerprint(mergedState) !== stateFingerprint(state);
   const shouldPublishMerge = JSON.stringify(mergedState) !== JSON.stringify(remoteState);
-  applyingOnlineState = true;
-  state = mergedState;
-  saveState();
-  applyingOnlineState = false;
-  renderAll();
+  if (changedState) {
+    applyingOnlineState = true;
+    state = mergedState;
+    saveState();
+    applyingOnlineState = false;
+    renderAll();
+  }
   setOnlineStatus("Online", "is-online");
   if (shouldPublishMerge) {
     saveOnlineStateNow().catch(() => setOnlineStatus("Falha ao salvar", "is-error"));
@@ -2810,7 +2831,7 @@ function queueOnlineSave() {
   clearTimeout(onlineSaveTimer);
   onlineSaveTimer = setTimeout(() => {
     saveOnlineStateNow().catch(() => setOnlineStatus("Falha ao salvar", "is-error"));
-  }, 500);
+  }, 1200);
 }
 
 async function saveOnlineStateNow() {
