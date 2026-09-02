@@ -2794,6 +2794,19 @@ function mergeById(localItems = [], remoteItems = []) {
   return Array.from(merged.values()).sort((a, b) => Number(a.id) - Number(b.id));
 }
 
+function transactionTrashIds(...trashLists) {
+  const ids = new Set();
+  trashLists.flat().forEach((item) => {
+    if (item?.id !== undefined && item?.id !== null) ids.add(Number(item.id));
+  });
+  return ids;
+}
+
+function mergeActiveTransactions(localItems = [], remoteItems = [], deletedIds = new Set()) {
+  return mergeById(localItems, remoteItems)
+    .filter((item) => !deletedIds.has(Number(item.id)) && !item.deletedAt);
+}
+
 function mergeCatalogItems(localItems = [], remoteItems = []) {
   const merged = new Map();
   localItems.forEach((item) => merged.set(normalizedImportKey(item.description), item));
@@ -2804,6 +2817,7 @@ function mergeCatalogItems(localItems = [], remoteItems = []) {
 function mergeOnlineState(localState, remoteState) {
   const local = migrateState(localState);
   const remote = migrateState(remoteState);
+  const deletedTransactionIds = transactionTrashIds(local.trash, remote.trash);
   return migrateState({
     ...remote,
     project: { ...remote.project, ...local.project },
@@ -2811,7 +2825,7 @@ function mergeOnlineState(localState, remoteState) {
     phases: mergeById(local.phases, remote.phases),
     catalog: mergeCatalogItems(local.catalog, remote.catalog),
     contributions: mergeById(local.contributions, remote.contributions),
-    transactions: mergeById(local.transactions, remote.transactions),
+    transactions: mergeActiveTransactions(local.transactions, remote.transactions, deletedTransactionIds),
     trash: mergeById(local.trash, remote.trash)
   });
 }
@@ -3422,20 +3436,26 @@ function renderTransactions() {
     const phase = escapeHtml(phaseName(item.phaseId));
     const unit = escapeHtml(item.unit || "Sem vínculo");
     const type = escapeHtml(item.type);
-    const payment = item.payment ? ` | ${escapeHtml(item.payment)}` : "";
-    const documentRef = item.document ? ` | doc. ${escapeHtml(item.document)}` : "";
+    const payment = escapeHtml(item.payment || "-");
+    const documentRef = item.document ? `<br><span class="muted">Doc.: ${escapeHtml(item.document)}</span>` : "";
     const supplier = escapeHtml(item.supplier || "-");
     const notes = item.notes ? `<br><span class="muted">${escapeHtml(item.notes)}</span>` : "";
     const status = financialStatus(item);
     const statusLabel = escapeHtml(status);
     const measure = escapeHtml(item.measure || "un");
     const dueDate = item.dueDate ? `<br><span class="muted">Vence em ${formatDate(item.dueDate)}</span>` : "";
+    const quantity = Number(item.quantity || 0).toLocaleString("pt-BR");
+    const quantityDetail = ["Material", "Ferramenta"].includes(item.type)
+      ? `${quantity} ${measure}<br><span class="muted">${money.format(item.unitValue)} / ${measure}</span>`
+      : `${quantity} ${measure}`;
     return `
       <tr>
         <td>${formatDate(item.date)}</td>
         <td>${phase}<br><span class="muted">${unit}</span><br><span class="badge ${financialStatusClass(status)}">${statusLabel}</span></td>
-        <td><strong>${description}</strong><br><span class="muted">${item.quantity} ${measure} x ${money.format(item.unitValue)} | ${type}${payment}${documentRef}</span></td>
-        <td>${supplier}${dueDate}${notes}</td>
+        <td class="transaction-description"><strong>${description}</strong></td>
+        <td><span class="badge">${type}</span></td>
+        <td>${quantityDetail}</td>
+        <td>${supplier}<br><span class="muted">${payment}</span>${documentRef}${dueDate}${notes}</td>
         <td class="number">${money.format(item.total)}</td>
         <td class="number">
           <div class="row-actions">
@@ -3446,7 +3466,7 @@ function renderTransactions() {
         </td>
       </tr>
     `;
-  }).join("") || '<tr><td colspan="6">Nenhum lançamento encontrado.</td></tr>';
+  }).join("") || '<tr><td colspan="8">Nenhum lançamento encontrado.</td></tr>';
 }
 
 function renderPhases() {

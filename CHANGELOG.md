@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- fix: impede que lançamentos apagados voltem pela sincronização online.
+- fix: deixa a descrição dos lançamentos limpa e move tipo, quantidade, fornecedor e pagamento para campos separados.
 - feat: aplica identidade visual Nosso Empreendimento com logos, tipografia e paleta oficial.
 - feat: adiciona aba Aportes para registrar capital investido e saldo da obra no dashboard.
 - fix: reduz consultas e renderizacoes repetidas da sincronizacao online para melhorar desempenho.
