@@ -1,9 +1,9 @@
-const CACHE_NAME = "gestao-obras-v31";
+const CACHE_NAME = "gestao-obras-v32";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./styles.css?v=31",
-  "./app.js?v=31",
+  "./styles.css?v=32",
+  "./app.js?v=32",
   "./manifest.webmanifest",
   "./assets/logo/nosso-empreendimento-logo-horizontal.png",
   "./assets/logo/nosso-empreendimento-simbolo.png",

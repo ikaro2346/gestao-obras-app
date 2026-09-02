@@ -736,7 +736,7 @@ textarea {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1060px;
+  min-width: 1040px;
 }
 
 th,
@@ -762,6 +762,19 @@ th {
 .number {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.actions-column {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  min-width: 132px;
+  background: var(--surface);
+  box-shadow: -10px 0 18px rgba(22, 10, 10, 0.08);
+}
+
+th.actions-column {
+  z-index: 2;
 }
 
 .delete-button {

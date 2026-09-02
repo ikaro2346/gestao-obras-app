@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix: mantém os botões Editar e Excluir visíveis na tabela de lançamentos.
 - fix: mostra valor unitario e total em colunas separadas e visiveis na lista de lançamentos.
 - fix: impede que lançamentos apagados voltem pela sincronização online.
 - fix: deixa a descrição dos lançamentos limpa e move tipo, quantidade, fornecedor e pagamento para campos separados.

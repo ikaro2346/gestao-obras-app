@@ -3456,7 +3456,7 @@ function renderTransactions() {
         <td class="number">${unitValue}</td>
         <td class="number">${money.format(item.total)}</td>
         <td>${supplier}<br><span class="muted">${payment}</span>${documentRef}${dueDate}${notes}</td>
-        <td class="number">
+        <td class="number actions-column">
           <div class="row-actions">
             ${status === "A pagar" ? `<button class="table-action" type="button" data-mark-paid="${item.id}">Marcar pago</button>` : ""}
             <button class="table-action" type="button" data-edit="${item.id}" aria-label="Editar ${description}">Editar</button>
