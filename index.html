@@ -8,7 +8,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=20">
+    <link rel="stylesheet" href="./styles.css?v=28">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
@@ -33,6 +33,7 @@
       <nav class="tabs" aria-label="Navegacao principal">
         <button class="tab is-active" type="button" data-view="dashboard">Dashboard</button>
         <button class="tab" type="button" data-view="lancamentos">Lançamentos</button>
+        <button class="tab" type="button" data-view="aportes">Aportes</button>
         <button class="tab" type="button" data-view="unidades">Unidades</button>
         <button class="tab" type="button" data-view="etapas">Etapas</button>
         <button class="tab" type="button" data-view="relatorio">Relatório</button>
@@ -49,6 +50,7 @@
           </div>
           <div class="quick-actions">
             <button class="primary-button quick-action" type="button" data-go-view="lancamentos">Novo gasto</button>
+            <button class="ghost-button quick-action" type="button" data-go-view="aportes">Novo aporte</button>
             <button class="ghost-button quick-action" type="button" id="quickRepeatLast">Repetir último</button>
             <button class="ghost-button quick-action" type="button" data-go-view="etapas">Ver etapas</button>
             <button class="ghost-button quick-action" type="button" data-go-view="relatorio">Relatório</button>
@@ -91,6 +93,16 @@
             <span>Contas a pagar</span>
             <strong id="pendingTotal">R$ 0,00</strong>
             <small id="pendingCount">0 pendências</small>
+          </article>
+          <article class="stat-card">
+            <span>Total investido</span>
+            <strong id="totalInvested">R$ 0,00</strong>
+            <small id="investmentCount">0 aporte(s)</small>
+          </article>
+          <article class="stat-card">
+            <span>Saldo da obra</span>
+            <strong id="workBalance">R$ 0,00</strong>
+            <small id="workBalanceStatus">Investido menos gasto pago</small>
           </article>
         </div>
 
@@ -324,6 +336,81 @@
                   </tr>
                 </thead>
                 <tbody id="transactionRows"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="aportes" class="view" aria-labelledby="aportesTitle">
+        <div class="split-layout">
+          <form id="contributionForm" class="panel form-panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Entrada de capital</p>
+                <h2 id="aportesTitle">Novo aporte</h2>
+              </div>
+            </div>
+
+            <label>
+              Data do aporte
+              <input id="contributionDate" type="date" required>
+            </label>
+
+            <label>
+              Valor aportado
+              <input id="contributionValue" type="number" min="0" step="0.01" inputmode="decimal" required>
+            </label>
+
+            <label>
+              Quem aportou
+              <input id="contributionInvestor" list="investorList" autocomplete="off" required placeholder="Nome do sócio/investidor">
+              <datalist id="investorList"></datalist>
+            </label>
+
+            <label>
+              Forma de pagamento
+              <select id="contributionPayment">
+                <option>Pix</option>
+                <option>Dinheiro</option>
+                <option>Cartão</option>
+                <option>Boleto</option>
+                <option>Transferência</option>
+              </select>
+            </label>
+
+            <label>
+              Observações
+              <textarea id="contributionNotes" rows="3"></textarea>
+            </label>
+
+            <button class="primary-button full" type="submit">Adicionar aporte</button>
+          </form>
+
+          <section class="panel">
+            <div class="panel-title">
+              <div>
+                <p class="eyebrow">Capital investido</p>
+                <h2>Aportes da obra</h2>
+              </div>
+              <strong id="contributionTotal" class="panel-kpi">R$ 0,00</strong>
+            </div>
+
+            <div id="contributionSummary" class="report-summary"></div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Quem aportou</th>
+                    <th>Pagamento</th>
+                    <th>Observações</th>
+                    <th class="number">Valor</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="contributionRows"></tbody>
               </table>
             </div>
           </section>
@@ -679,6 +766,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=27"></script>
+    <script src="./app.js?v=28"></script>
   </body>
 </html>

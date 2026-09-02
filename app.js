@@ -11,7 +11,7 @@ const DEFAULT_ONLINE_CONFIG = {
   anonKey: "sb_publishable_Jayqsmez-_CEwoXsgg-dSg_PENYO0l-",
   projectKey: "casa-germinada"
 };
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const seedData = {
   "project": {
@@ -2514,6 +2514,15 @@ function migrateState(data) {
       notes: String(item.notes || "")
     };
   }) : [];
+  next.contributions = Array.isArray(next.contributions) ? next.contributions.map((item, index) => ({
+    id: Number(item.id || index + 1),
+    date: String(item.date || todayIso()),
+    value: Number(item.value || 0),
+    investor: String(item.investor || ""),
+    payment: String(item.payment || "Pix"),
+    notes: String(item.notes || ""),
+    deletedAt: String(item.deletedAt || "")
+  })).filter((item) => item.value > 0) : [];
   next.trash = Array.isArray(next.trash) ? next.trash : [];
   if (previousSchemaVersion < 8) replaceWithSpreadsheetSeed(next);
   return next;
@@ -2801,6 +2810,7 @@ function mergeOnlineState(localState, remoteState) {
     units: mergeById(local.units, remote.units),
     phases: mergeById(local.phases, remote.phases),
     catalog: mergeCatalogItems(local.catalog, remote.catalog),
+    contributions: mergeById(local.contributions, remote.contributions),
     transactions: mergeById(local.transactions, remote.transactions),
     trash: mergeById(local.trash, remote.trash)
   });
@@ -2881,6 +2891,21 @@ function paidTransactions(items = state.transactions) {
 
 function pendingTransactions(items = state.transactions) {
   return items.filter((item) => financialStatus(item) === "A pagar");
+}
+
+function activeContributions(items = state.contributions) {
+  return (items || []).filter((item) => !item.deletedAt);
+}
+
+function totalContributions(items = state.contributions) {
+  return activeContributions(items).reduce((sum, item) => sum + Number(item.value || 0), 0);
+}
+
+function latestContribution(items = state.contributions) {
+  return activeContributions(items).sort((a, b) => {
+    const dateCompare = String(b.date || "").localeCompare(String(a.date || ""));
+    return dateCompare || Number(b.id || 0) - Number(a.id || 0);
+  })[0];
 }
 
 function phaseTotal(id, transactions = state.transactions) {
@@ -3215,6 +3240,9 @@ function renderSelects() {
 
   const suppliers = Array.from(new Set(state.transactions.map((item) => item.supplier).filter(Boolean))).sort();
   byId("supplierList").innerHTML = suppliers.map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
+
+  const investors = Array.from(new Set(activeContributions().map((item) => item.investor).filter(Boolean))).sort();
+  byId("investorList").innerHTML = investors.map((item) => `<option value="${escapeHtml(item)}"></option>`).join("");
 }
 
 function renderDashboard() {
@@ -3227,6 +3255,8 @@ function renderDashboard() {
   const last = latestTransaction(paidTransactions(state.transactions));
   const totalReal = realizedItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
   const pendingTotal = pendingItems.reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const investedTotal = totalContributions();
+  const workBalance = investedTotal - totalReal;
   const overdueCount = pendingItems.filter((item) => item.dueDate && item.dueDate < today).length;
   const selectedPhase = byId("phaseFilter")?.value || "Todas";
   const budgetPhases = selectedPhase === "Todas"
@@ -3258,6 +3288,12 @@ function renderDashboard() {
   byId("pendingCount").textContent = overdueCount
     ? `${pendingItems.length} pendência(s), ${overdueCount} vencida(s)`
     : `${pendingItems.length} pendência(s) filtrada(s)`;
+  byId("totalInvested").textContent = money.format(investedTotal);
+  byId("investmentCount").textContent = `${activeContributions().length} aporte(s) registrado(s)`;
+  byId("workBalance").textContent = money.format(workBalance);
+  byId("workBalanceStatus").textContent = workBalance >= 0
+    ? "Capital ainda disponível"
+    : "Gasto acima do capital aportado";
   byId("todayLabel").textContent = formatDate(today);
   byId("todaySummary").innerHTML = `
     <article class="today-item"><span>Gasto hoje</span><strong>${money.format(todayTotal)}</strong></article>
@@ -3549,6 +3585,45 @@ function renderReport() {
   }).join("");
 }
 
+function renderContributions() {
+  const contributions = activeContributions()
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || Number(b.id || 0) - Number(a.id || 0));
+  const total = totalContributions(contributions);
+  const last = latestContribution(contributions);
+  const byInvestor = contributions.reduce((acc, item) => {
+    const key = item.investor || "Sem nome";
+    acc[key] = (acc[key] || 0) + Number(item.value || 0);
+    return acc;
+  }, {});
+  const [mainInvestor, mainInvestorTotal] = topEntry(byInvestor);
+
+  byId("contributionTotal").textContent = money.format(total);
+  byId("contributionSummary").innerHTML = `
+    <article class="report-chip"><span class="muted">Total aportado</span><strong>${money.format(total)}</strong></article>
+    <article class="report-chip"><span class="muted">Registros</span><strong>${contributions.length}</strong></article>
+    <article class="report-chip"><span class="muted">Maior aportador</span><strong>${escapeHtml(mainInvestor)}</strong><small>${money.format(mainInvestorTotal)}</small></article>
+    <article class="report-chip"><span class="muted">Último aporte</span><strong>${last ? money.format(last.value) : "-"}</strong><small>${last ? formatDate(last.date) : "-"}</small></article>
+  `;
+
+  byId("contributionRows").innerHTML = contributions.map((item) => {
+    const investor = escapeHtml(item.investor || "Sem nome");
+    const payment = escapeHtml(item.payment || "-");
+    const notes = escapeHtml(item.notes || "-");
+    return `
+      <tr>
+        <td>${formatDate(item.date)}</td>
+        <td><strong>${investor}</strong></td>
+        <td>${payment}</td>
+        <td>${notes}</td>
+        <td class="number">${money.format(item.value)}</td>
+        <td class="number">
+          <button class="delete-button" type="button" data-delete-contribution="${item.id}" aria-label="Excluir aporte de ${investor}">Excluir</button>
+        </td>
+      </tr>
+    `;
+  }).join("") || '<tr><td colspan="6">Nenhum aporte registrado.</td></tr>';
+}
+
 function renderProjectSelector() {
   byId("projectSelector").innerHTML = portfolio.projects
     .map((entry) => `<option value="${escapeHtml(entry.id)}">${escapeHtml(entry.name || entry.data?.project?.name || "Obra")}</option>`)
@@ -3561,6 +3636,7 @@ function renderAll() {
   renderSelects();
   renderDashboard();
   renderTransactions();
+  renderContributions();
   renderUnits();
   renderPhases();
   renderReport();
@@ -3573,12 +3649,17 @@ function formatDate(value) {
 }
 
 function nextId(collection) {
-  return Math.max(0, ...collection.map((item) => Number(item.id))) + 1;
+  return Math.max(0, ...(collection || []).map((item) => Number(item.id))) + 1;
 }
 
 function nextTransactionId() {
   const timeId = (Date.now() * 1000) + Math.floor(Math.random() * 1000);
   return Math.max(nextId(state.transactions), timeId);
+}
+
+function nextContributionId() {
+  const timeId = (Date.now() * 1000) + Math.floor(Math.random() * 1000);
+  return Math.max(nextId(state.contributions), timeId);
 }
 
 function download(filename, content, type) {
@@ -4069,6 +4150,17 @@ function validateImportState(data) {
         notes: String(item.notes || "")
       };
     }),
+    contributions: Array.isArray(data.contributions)
+      ? data.contributions.map((item, index) => ({
+        id: Number(item.id || index + 1),
+        date: String(item.date || todayIso()),
+        value: Number(item.value || 0),
+        investor: String(item.investor || ""),
+        payment: String(item.payment || "Pix"),
+        notes: String(item.notes || ""),
+        deletedAt: String(item.deletedAt || "")
+      })).filter((item) => item.value > 0)
+      : [],
     trash: Array.isArray(data.trash) ? data.trash : []
   };
 }
@@ -4120,6 +4212,7 @@ function importJsonFile(file) {
       }
       saveState();
       resetTransactionForm();
+      resetContributionForm();
       renderAll();
       alert("Importação concluída com sucesso.");
     } catch (error) {
@@ -4234,6 +4327,28 @@ function resetTransactionForm(form = byId("transactionForm")) {
   byId("cancelTransactionEdit").hidden = true;
   updateTransactionTotalPreview();
   updateFavoriteButton();
+}
+
+function contributionFromForm(id) {
+  const previous = (state.contributions || []).find((item) => item.id === Number(id));
+  const timestamp = new Date().toISOString();
+  return {
+    ...(previous || {}),
+    id,
+    date: byId("contributionDate").value || todayIso(),
+    value: Number(byId("contributionValue").value || 0),
+    investor: byId("contributionInvestor").value.trim(),
+    payment: byId("contributionPayment").value,
+    notes: byId("contributionNotes").value.trim(),
+    createdAt: previous?.createdAt || timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function resetContributionForm(form = byId("contributionForm")) {
+  form.reset();
+  byId("contributionDate").value = todayIso();
+  byId("contributionPayment").value = "Pix";
 }
 
 function saveTransactionDraft() {
@@ -4601,6 +4716,9 @@ function wireEvents() {
       document.querySelectorAll(".tab, .view").forEach((item) => item.classList.remove("is-active"));
       tab.classList.add("is-active");
       byId(tab.dataset.view).classList.add("is-active");
+      if (tab.dataset.view === "aportes") {
+        byId("contributionDate").value = byId("contributionDate").value || todayIso();
+      }
     });
   });
 
@@ -4612,6 +4730,10 @@ function wireEvents() {
           byId("formDate").value = todayIso();
         }
         byId("formDescription").focus();
+      }
+      if (button.dataset.goView === "aportes") {
+        byId("contributionDate").value = byId("contributionDate").value || todayIso();
+        byId("contributionValue").focus();
       }
     });
   });
@@ -4703,6 +4825,39 @@ function wireEvents() {
   byId("cancelTransactionEdit").addEventListener("click", () => {
     resetTransactionForm();
     byId("formDescription").focus();
+  });
+
+  byId("contributionForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const item = contributionFromForm(nextContributionId());
+    if (!item.investor) {
+      alert("Informe quem fez o aporte.");
+      return;
+    }
+    if (item.value <= 0) {
+      alert("Informe um valor de aporte maior que zero.");
+      return;
+    }
+    state.contributions = [...(state.contributions || []), item];
+    saveState();
+    resetContributionForm(event.target);
+    renderAll();
+  });
+
+  byId("contributionRows").addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-delete-contribution]");
+    if (!deleteButton) return;
+    const id = Number(deleteButton.dataset.deleteContribution);
+    const item = (state.contributions || []).find((entry) => entry.id === id);
+    if (!item) return;
+    const confirmed = confirm(`Excluir o aporte de ${money.format(item.value)} feito por "${item.investor || "Sem nome"}"?`);
+    if (!confirmed) return;
+    state.contributions = (state.contributions || []).map((entry) => entry.id === id
+      ? { ...entry, deletedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      : entry
+    );
+    saveState();
+    renderAll();
   });
 
   byId("transactionRows").addEventListener("click", (event) => {
@@ -4969,6 +5124,7 @@ function wireEvents() {
 }
 
 byId("formDate").value = todayIso();
+byId("contributionDate").value = todayIso();
 renderAll();
 restoreTransactionDraft();
 wireEvents();

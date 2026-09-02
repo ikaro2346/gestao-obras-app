@@ -97,11 +97,13 @@ const migrated = evaluate(`({
   firstTotal: state.transactions[0].total,
   firstStatus: state.transactions[0].financialStatus,
   firstMeasure: state.transactions[0].measure,
+  contributionCount: state.contributions.length,
   empreita6Phase: phaseName(state.transactions.find((item) => item.description === "Empreita 6 parcela")?.phaseId)
 })`);
 if (
-  migrated.schemaVersion !== 8 ||
+  migrated.schemaVersion !== 9 ||
   migrated.count !== migrated.expectedCount ||
+  migrated.contributionCount !== 0 ||
   migrated.firstTotal !== 2500 ||
   migrated.firstStatus !== "Pago" ||
   migrated.firstMeasure !== "un" ||
@@ -169,7 +171,7 @@ const repairedDuplicateImport = evaluate(`(() => {
 })()`);
 const seedTotal = evaluate("seedData.transactions.reduce((sum, item) => sum + Number(item.total || 0), 0)");
 if (
-  repairedDuplicateImport.schemaVersion !== 8 ||
+  repairedDuplicateImport.schemaVersion !== 9 ||
   repairedDuplicateImport.count !== migrated.expectedCount ||
   Math.abs(repairedDuplicateImport.total - seedTotal) > 0.001
 ) {
