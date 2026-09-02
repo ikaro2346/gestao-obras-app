@@ -2340,6 +2340,7 @@ let onlineClient = null;
 let onlineChannel = null;
 let onlineSaveTimer = null;
 let onlinePollTimer = null;
+let supabaseSdkPromise = null;
 let applyingOnlineState = false;
 let lastOnlineUpdatedAt = "";
 
@@ -2572,7 +2573,7 @@ function loadOnlineConfig() {
     const saved = JSON.parse(localStorage.getItem(ONLINE_CONFIG_KEY) || "null");
     return {
       supabaseUrl: String(saved?.supabaseUrl || DEFAULT_ONLINE_CONFIG.supabaseUrl).trim(),
-      anonKey: String(saved?.anonKey || "").trim(),
+      anonKey: normalizeSupabaseAnonKey(saved?.anonKey),
       projectKey: String(saved?.projectKey || DEFAULT_ONLINE_CONFIG.projectKey).trim() || DEFAULT_ONLINE_CONFIG.projectKey
     };
   } catch {
@@ -2580,10 +2581,18 @@ function loadOnlineConfig() {
   }
 }
 
+function normalizeSupabaseAnonKey(value) {
+  const key = String(value || "").trim();
+  if (!key || key === "sb_publishable_..." || key.includes("...")) {
+    return DEFAULT_ONLINE_CONFIG.anonKey;
+  }
+  return key;
+}
+
 function saveOnlineConfig(config) {
   onlineConfig = {
     supabaseUrl: String(config.supabaseUrl || DEFAULT_ONLINE_CONFIG.supabaseUrl).trim(),
-    anonKey: String(config.anonKey || "").trim(),
+    anonKey: normalizeSupabaseAnonKey(config.anonKey),
     projectKey: String(config.projectKey || DEFAULT_ONLINE_CONFIG.projectKey).trim() || DEFAULT_ONLINE_CONFIG.projectKey
   };
   localStorage.setItem(ONLINE_CONFIG_KEY, JSON.stringify(onlineConfig));
@@ -2597,8 +2606,38 @@ function setOnlineStatus(text, mode = "") {
   const badge = byId("onlineStatus");
   if (!badge) return;
   badge.textContent = text;
+  badge.title = `Sincronização online: ${text}`;
   badge.classList.remove("is-online", "is-warning", "is-error");
   if (mode) badge.classList.add(mode);
+}
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[src="${src}"]`);
+    if (existing?.dataset.loaded === "true") {
+      resolve();
+      return;
+    }
+    const script = existing || document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => {
+      script.dataset.loaded = "true";
+      resolve();
+    };
+    script.onerror = () => reject(new Error(`Falha ao carregar ${src}`));
+    if (!existing) document.head.appendChild(script);
+  });
+}
+
+async function ensureSupabaseSdk() {
+  if (window.supabase?.createClient) return true;
+  if (!supabaseSdkPromise) {
+    supabaseSdkPromise = loadScriptOnce("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2")
+      .catch(() => loadScriptOnce("https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"));
+  }
+  await supabaseSdkPromise;
+  return Boolean(window.supabase?.createClient);
 }
 
 function getDeviceId() {
@@ -2625,7 +2664,8 @@ async function connectOnlineSync() {
     setOnlineStatus("Local");
     return;
   }
-  if (!window.supabase?.createClient) {
+  setOnlineStatus("Conectando", "is-warning");
+  if (!(await ensureSupabaseSdk())) {
     setOnlineStatus("Sem conexão", "is-error");
     return;
   }
@@ -2637,7 +2677,6 @@ async function connectOnlineSync() {
   stopOnlinePolling();
 
   onlineClient = window.supabase.createClient(onlineConfig.supabaseUrl, onlineConfig.anonKey);
-  setOnlineStatus("Conectando", "is-warning");
 
   try {
     const { data, error } = await onlineClient
@@ -2675,7 +2714,8 @@ async function connectOnlineSync() {
       });
     startOnlinePolling();
   } catch (error) {
-    setOnlineStatus("Erro online", "is-error");
+    const message = error.message || String(error);
+    setOnlineStatus(message.toLowerCase().includes("authentication") ? "Chave inválida" : "Erro online", "is-error");
     alert(`Não foi possível conectar no Supabase.\n${error.message || error}`);
   }
 }
