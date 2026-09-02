@@ -1,19 +1,20 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f4;
+  --bg: #f9f5f1;
   --surface: #ffffff;
-  --surface-2: #eef3ef;
-  --ink: #17201f;
-  --muted: #64706c;
-  --line: #d9dfda;
-  --primary: #1d4d4f;
-  --primary-strong: #14383a;
-  --accent: #c97a32;
-  --accent-soft: #f5e1cf;
-  --danger: #a63f3f;
-  --success: #357a54;
-  --shadow: 0 18px 50px rgba(21, 31, 30, 0.09);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --surface-2: #f1e8dd;
+  --ink: #160a0a;
+  --muted: #6f625c;
+  --line: #e2d4c5;
+  --primary: #160a0a;
+  --primary-strong: #050202;
+  --accent: #cf9d37;
+  --accent-strong: #8d661d;
+  --accent-soft: #f3e4c5;
+  --danger: #9f2f2f;
+  --success: #2f6b4a;
+  --shadow: 0 18px 50px rgba(22, 10, 10, 0.10);
+  font-family: Outfit, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * {
@@ -43,8 +44,9 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 24px clamp(16px, 4vw, 40px);
-  background: linear-gradient(135deg, #1d4d4f 0%, #203733 56%, #6e4a2c 100%);
+  background: #160a0a;
   color: #fff;
+  border-bottom: 3px solid var(--accent);
 }
 
 .app-header h1,
@@ -57,8 +59,24 @@ button {
 }
 
 .app-header h1 {
-  font-size: 30px;
-  font-weight: 650;
+  font-family: "Cormorant Garamond", Georgia, serif;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.brand-block {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.5vw, 24px);
+  min-width: 0;
+}
+
+.brand-logo {
+  display: block;
+  width: clamp(190px, 25vw, 360px);
+  height: auto;
+  max-height: 86px;
+  object-fit: contain;
 }
 
 .eyebrow {
@@ -106,10 +124,12 @@ button {
 .primary-button {
   background: var(--primary);
   color: #fff;
+  border-color: var(--accent);
 }
 
 .primary-button:hover {
   background: var(--primary-strong);
+  border-color: #e6bc5f;
 }
 
 .ghost-button,
@@ -121,21 +141,21 @@ button {
 
 .app-header .icon-button {
   background: rgba(255, 255, 255, .12);
-  border-color: rgba(255, 255, 255, .34);
+  border-color: rgba(207, 157, 55, .75);
   color: #fff;
 }
 
 .app-header .update-button {
-  background: #fff7ed;
-  border-color: #fed7aa;
-  color: #7c2d12;
+  background: #f9f5f1;
+  border-color: var(--accent);
+  color: var(--primary);
 }
 
 .sync-status {
   display: inline-flex;
   align-items: center;
   min-height: 40px;
-  border: 1px solid rgba(255, 255, 255, .34);
+  border: 1px solid rgba(207, 157, 55, .75);
   border-radius: 8px;
   background: rgba(255, 255, 255, .12);
   color: #fff;
@@ -192,8 +212,9 @@ button {
 
 .tab.is-active {
   background: var(--surface);
-  border-color: var(--primary);
+  border-color: var(--accent);
   color: var(--primary);
+  box-shadow: inset 0 -3px 0 var(--accent);
 }
 
 .view {
@@ -265,12 +286,15 @@ button {
 
 .section-title h2,
 .panel h2 {
+  font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 24px;
+  font-weight: 700;
 }
 
 .panel h3 {
+  font-family: "Cormorant Garamond", Georgia, serif;
   font-size: 18px;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .stats-grid {
@@ -291,6 +315,7 @@ button {
 
 .stat-card {
   padding: 16px;
+  border-top: 3px solid rgba(207, 157, 55, .62);
 }
 
 .stat-card span,
@@ -304,6 +329,7 @@ button {
   margin: 8px 0 6px;
   font-size: 25px;
   letter-spacing: 0;
+  color: var(--primary);
 }
 
 .dashboard-grid,
@@ -361,6 +387,15 @@ textarea,
   padding: 8px 10px;
 }
 
+input:focus,
+select:focus,
+textarea:focus,
+.input:focus,
+.select:focus {
+  outline: 2px solid rgba(207, 157, 55, .32);
+  border-color: var(--accent);
+}
+
 textarea {
   resize: vertical;
 }
@@ -395,9 +430,9 @@ textarea {
   gap: 12px;
   margin-top: 12px;
   padding: 10px 12px;
-  border: 1px solid #b8d4ca;
+  border: 1px solid rgba(207, 157, 55, .56);
   border-radius: 6px;
-  background: #eef7f3;
+  background: #fff9eb;
 }
 
 .calculated-total span {
@@ -534,7 +569,7 @@ textarea {
 }
 
 .panel-kpi {
-  color: var(--primary);
+  color: var(--accent-strong);
   font-size: 22px;
   white-space: nowrap;
 }
@@ -553,7 +588,7 @@ textarea {
   height: 30px;
   border-radius: 999px;
   background: var(--surface-2);
-  color: var(--primary);
+  color: var(--accent-strong);
   font-weight: 750;
 }
 
@@ -735,7 +770,7 @@ th {
 .table-action {
   border: 0;
   background: transparent;
-  color: var(--primary);
+  color: var(--accent-strong);
   font-weight: 750;
   padding: 2px 4px;
 }
@@ -829,7 +864,7 @@ dialog {
 }
 
 dialog::backdrop {
-  background: rgba(14, 24, 23, .42);
+  background: rgba(22, 10, 10, .55);
 }
 
 #pdfReportDialog {
@@ -912,10 +947,10 @@ dialog::backdrop {
   gap: 12px;
   max-width: min(440px, calc(100% - 24px));
   padding: 10px 12px;
-  border: 1px solid #334b45;
+  border: 1px solid rgba(207, 157, 55, .75);
   border-radius: 6px;
   color: #fff;
-  background: #20332f;
+  background: #160a0a;
   box-shadow: 0 12px 35px rgba(0, 0, 0, .22);
 }
 
@@ -971,18 +1006,45 @@ dialog::backdrop {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 14px;
+    padding: 18px 14px;
+  }
+
+  .brand-block {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .brand-logo {
+    width: min(260px, 100%);
+    max-height: 64px;
+  }
+
+  .app-header h1 {
+    font-size: 28px;
   }
 
   .header-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     width: 100%;
+    gap: 8px;
   }
 
-  .header-actions button {
+  .header-actions button,
+  .sync-status {
     flex: 1;
+    min-height: 36px;
+    padding: 7px 10px;
   }
 
   .project-selector {
+    grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .sync-status {
+    justify-content: center;
   }
 
   .stats-grid,
@@ -1055,7 +1117,7 @@ dialog::backdrop {
     position: sticky;
     bottom: 8px;
     z-index: 4;
-    box-shadow: 0 8px 22px rgba(16, 71, 59, .26);
+    box-shadow: 0 8px 22px rgba(22, 10, 10, .28);
   }
 
   .trash-item {

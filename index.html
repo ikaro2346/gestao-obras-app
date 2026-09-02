@@ -3,20 +3,26 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#1d4d4f">
+    <meta name="theme-color" content="#160A0A">
     <title>Gestão de Obras</title>
     <link rel="manifest" href="./manifest.webmanifest">
-    <link rel="icon" href="./icon-192.png">
-    <link rel="apple-touch-icon" href="./icon-192.png">
-    <link rel="stylesheet" href="./styles.css?v=28">
+    <link rel="icon" href="./assets/logo/nosso-empreendimento-simbolo.png">
+    <link rel="apple-touch-icon" href="./assets/logo/nosso-empreendimento-simbolo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./styles.css?v=29">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <p class="eyebrow">Controle de obra</p>
-        <h1 id="projectTitle">Casa Germinada</h1>
-        <p id="projectMeta" class="muted"></p>
+      <div class="brand-block">
+        <img class="brand-logo" src="./assets/logo/nosso-empreendimento-logo-horizontal.png" alt="Nosso Empreendimento">
+        <div>
+          <p class="eyebrow">Controle de obra</p>
+          <h1 id="projectTitle">Casa Germinada</h1>
+          <p id="projectMeta" class="muted"></p>
+        </div>
       </div>
       <div class="header-actions">
         <select id="projectSelector" class="select project-selector" aria-label="Obra ativa"></select>
@@ -766,6 +772,6 @@
       </form>
     </dialog>
 
-    <script src="./app.js?v=28"></script>
+    <script src="./app.js?v=29"></script>
   </body>
 </html>

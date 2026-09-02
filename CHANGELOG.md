@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- feat: aplica identidade visual Nosso Empreendimento com logos, tipografia e paleta oficial.
 - feat: adiciona aba Aportes para registrar capital investido e saldo da obra no dashboard.
 - fix: reduz consultas e renderizacoes repetidas da sincronizacao online para melhorar desempenho.
 - fix: usa a chave publica padrao do Supabase quando a sincronizacao online esta vazia ou com placeholder.

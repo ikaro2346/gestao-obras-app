@@ -1,21 +1,21 @@
 {
-  "name": "Gestao de Obras",
-  "short_name": "Obras",
+  "name": "Nosso Empreendimento - Gestao de Obras",
+  "short_name": "Nosso Obras",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f7f4",
-  "theme_color": "#1d4d4f",
+  "background_color": "#F9F5F1",
+  "theme_color": "#160A0A",
   "icons": [
     {
-      "src": "./icon-192.png",
-      "sizes": "192x192",
+      "src": "./assets/logo/nosso-empreendimento-simbolo.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png",
+      "src": "./assets/logo/nosso-empreendimento-simbolo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
