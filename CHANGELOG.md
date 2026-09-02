@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- fix: mostra valor unitario e total em colunas separadas e visiveis na lista de lançamentos.
 - fix: impede que lançamentos apagados voltem pela sincronização online.
 - fix: deixa a descrição dos lançamentos limpa e move tipo, quantidade, fornecedor e pagamento para campos separados.
 - feat: aplica identidade visual Nosso Empreendimento com logos, tipografia e paleta oficial.

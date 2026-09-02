@@ -3445,18 +3445,17 @@ function renderTransactions() {
     const measure = escapeHtml(item.measure || "un");
     const dueDate = item.dueDate ? `<br><span class="muted">Vence em ${formatDate(item.dueDate)}</span>` : "";
     const quantity = Number(item.quantity || 0).toLocaleString("pt-BR");
-    const quantityDetail = ["Material", "Ferramenta"].includes(item.type)
-      ? `${quantity} ${measure}<br><span class="muted">${money.format(item.unitValue)} / ${measure}</span>`
-      : `${quantity} ${measure}`;
+    const unitValue = money.format(item.unitValue);
     return `
       <tr>
         <td>${formatDate(item.date)}</td>
         <td>${phase}<br><span class="muted">${unit}</span><br><span class="badge ${financialStatusClass(status)}">${statusLabel}</span></td>
         <td class="transaction-description"><strong>${description}</strong></td>
         <td><span class="badge">${type}</span></td>
-        <td>${quantityDetail}</td>
-        <td>${supplier}<br><span class="muted">${payment}</span>${documentRef}${dueDate}${notes}</td>
+        <td>${quantity} ${measure}</td>
+        <td class="number">${unitValue}</td>
         <td class="number">${money.format(item.total)}</td>
+        <td>${supplier}<br><span class="muted">${payment}</span>${documentRef}${dueDate}${notes}</td>
         <td class="number">
           <div class="row-actions">
             ${status === "A pagar" ? `<button class="table-action" type="button" data-mark-paid="${item.id}">Marcar pago</button>` : ""}
@@ -3466,7 +3465,7 @@ function renderTransactions() {
         </td>
       </tr>
     `;
-  }).join("") || '<tr><td colspan="8">Nenhum lançamento encontrado.</td></tr>';
+  }).join("") || '<tr><td colspan="9">Nenhum lançamento encontrado.</td></tr>';
 }
 
 function renderPhases() {
